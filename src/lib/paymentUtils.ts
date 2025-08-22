@@ -26,20 +26,36 @@ const defaultConfig: RazorpayConfig = {
   keyId: 'rzp_test_xxxxxxxxxx', // Replace with your Razorpay Key ID
   keySecret: 'your_secret_key', // Keep this secure!
   businessName: 'Your Business Name',
-  businessUPI: 'yourbusiness@paytm', // Your UPI ID
+  businessUPI: 'yourbusiness@paytm', // ⚠️ CHANGE THIS TO YOUR REAL UPI ID
   businessEmail: 'business@example.com',
   businessPhone: '+91XXXXXXXXXX'
 };
+
+// Real UPI ID examples:
+// businessUPI: 'yourname@paytm'        // If you use Paytm
+// businessUPI: 'yourname@ybl'          // If you use PhonePe  
+// businessUPI: 'yourname@oksbi'        // If you use SBI
+// businessUPI: 'yourname@okicici'      // If you use ICICI
+// businessUPI: 'yourname@okhdfc'       // If you use HDFC
 
 // Generate UPI Payment QR Code
 export const generateUPIQRCode = async (
   amount: number,
   invoiceNumber: string,
-  businessUPI: string = defaultConfig.businessUPI,
-  businessName: string = defaultConfig.businessName
+  businessUPI?: string,
+  businessName?: string
 ): Promise<string> => {
+  // Use provided values or fall back to defaults
+  const upiId = businessUPI || defaultConfig.businessUPI;
+  const name = businessName || defaultConfig.businessName;
+  
+  // Validate UPI ID format
+  if (!validateUPI(upiId)) {
+    throw new Error('Invalid UPI ID format. Please configure a valid UPI ID in settings.');
+  }
+  
   // UPI Payment URL format
-  const upiUrl = `upi://pay?pa=${businessUPI}&pn=${encodeURIComponent(businessName)}&am=${amount}&tn=Invoice%20${invoiceNumber}&cu=INR`;
+  const upiUrl = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(name)}&am=${amount}&tn=Invoice%20${invoiceNumber}&cu=INR`;
   
   try {
     // Generate QR code as data URL
@@ -62,10 +78,19 @@ export const generateUPIQRCode = async (
 export const generateUPILink = (
   amount: number,
   invoiceNumber: string,
-  businessUPI: string = defaultConfig.businessUPI,
-  businessName: string = defaultConfig.businessName
+  businessUPI?: string,
+  businessName?: string
 ): string => {
-  return `upi://pay?pa=${businessUPI}&pn=${encodeURIComponent(businessName)}&am=${amount}&tn=Invoice%20${invoiceNumber}&cu=INR`;
+  // Use provided values or fall back to defaults
+  const upiId = businessUPI || defaultConfig.businessUPI;
+  const name = businessName || defaultConfig.businessName;
+  
+  // Validate UPI ID format
+  if (!validateUPI(upiId)) {
+    throw new Error('Invalid UPI ID format. Please configure a valid UPI ID in settings.');
+  }
+  
+  return `upi://pay?pa=${upiId}&pn=${encodeURIComponent(name)}&am=${amount}&tn=Invoice%20${invoiceNumber}&cu=INR`;
 };
 
 // Generate Razorpay Payment Link (simplified version)
