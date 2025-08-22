@@ -3,6 +3,7 @@ import { useEnhancedInvoiceStore } from '../store/useEnhancedInvoiceStore';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { PaymentOptions } from '../components/PaymentOptions';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon, 
@@ -62,6 +63,7 @@ export default function BillingPage() {
   const [selectedTab, setSelectedTab] = useState<'invoices' | 'payments' | 'analytics' | 'settings'>('invoices');
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState<number | null>(null);
+  const [showPaymentOptions, setShowPaymentOptions] = useState<number | null>(null);
   const [selectedInvoices, setSelectedInvoices] = useState<number[]>([]);
 
   // Communication dropdown state
@@ -646,13 +648,23 @@ _This is an automated message. Reply to speak with our team._`,
                             </Button>
                           )}
                           {invoice.status !== 'paid' && (
-                            <Button
-                              size="sm"
-                              onClick={() => setShowPaymentModal(invoice.id!)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
-                            >
-                              Record Payment
-                            </Button>
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => setShowPaymentOptions(invoice.id!)}
+                                className="bg-green-600 hover:bg-green-700 text-white mr-2"
+                                title="Show Payment Options"
+                              >
+                                💳 Pay Now
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => setShowPaymentModal(invoice.id!)}
+                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                              >
+                                Record Payment
+                              </Button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -1083,6 +1095,162 @@ _This is an automated message. Reply to speak with our team._`,
             </div>
           </Card>
 
+          {/* Payment Gateway Settings */}
+          <Card>
+            <div className="p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-6">💳 Payment Gateway Configuration</h3>
+              
+              {/* Payment Methods */}
+              <div className="mb-6">
+                <h4 className="text-md font-medium text-gray-900 mb-4">Payment Methods</h4>
+                <div className="space-y-3">
+                  <label className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">📱 UPI Payments</div>
+                      <div className="text-sm text-gray-500">Enable UPI QR codes and payment links</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      defaultChecked={true}
+                      className="h-4 w-4 text-green-600"
+                    />
+                  </label>
+                  
+                  <label className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">💳 Razorpay Integration</div>
+                      <div className="text-sm text-gray-500">Cards, UPI, Net Banking via Razorpay</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      defaultChecked={false}
+                      className="h-4 w-4 text-purple-600"
+                    />
+                  </label>
+                  
+                  <label className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">🌍 PayPal Integration</div>
+                      <div className="text-sm text-gray-500">International payments via PayPal</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      defaultChecked={false}
+                      className="h-4 w-4 text-yellow-600"
+                    />
+                  </label>
+                  
+                  <label className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">🏦 Bank Transfer</div>
+                      <div className="text-sm text-gray-500">Direct bank transfer instructions</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      defaultChecked={true}
+                      className="h-4 w-4 text-gray-600"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Business Payment Details */}
+              <div className="border-t pt-6 mb-6">
+                <h4 className="text-md font-medium text-gray-900 mb-4">💼 Your Business Payment Details</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Business Name</label>
+                    <Input
+                      defaultValue="Your Business Name"
+                      placeholder="Enter your business name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">UPI ID</label>
+                    <Input
+                      defaultValue="yourbusiness@paytm"
+                      placeholder="your-business@bank"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Bank Account Number</label>
+                    <Input
+                      defaultValue="XXXXXXXXXXXX"
+                      placeholder="Your bank account number"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">IFSC Code</label>
+                    <Input
+                      defaultValue="BANKXXXXX"
+                      placeholder="Bank IFSC code"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Bank Name</label>
+                    <Input
+                      defaultValue="Your Bank Name"
+                      placeholder="Name of your bank"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Account Holder Name</label>
+                    <Input
+                      defaultValue="Your Business Name"
+                      placeholder="Account holder name"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Razorpay Configuration */}
+              <div className="border-t pt-6 mb-6">
+                <h4 className="text-md font-medium text-gray-900 mb-4">🔧 Razorpay Configuration</h4>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <span className="text-yellow-600">⚠️</span>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">Setup Instructions</h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <ol className="list-decimal list-inside space-y-1">
+                          <li>Sign up at <a href="https://razorpay.com" target="_blank" rel="noopener noreferrer" className="underline">razorpay.com</a></li>
+                          <li>Get your API keys from the dashboard</li>
+                          <li>Enter them below to start accepting payments</li>
+                          <li>Use test keys for testing, live keys for production</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Razorpay Key ID</label>
+                    <Input
+                      type="password"
+                      placeholder="rzp_test_xxxxxxxxxx"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Your Razorpay API Key ID</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Razorpay Key Secret</label>
+                    <Input
+                      type="password"
+                      placeholder="Enter your secret key"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Keep this secret and secure!</p>
+                  </div>
+                </div>
+              </div>
+
+              <Button className="bg-green-600 hover:bg-green-700 text-white">
+                💾 Save Payment Settings
+              </Button>
+            </div>
+          </Card>
+
           {/* Tax Rates */}
           <Card>
             <div className="p-6">
@@ -1439,6 +1607,61 @@ _This is an automated message. Reply to speak with our team._`,
                       disabled={!paymentForm.amount}
                     >
                       Record Payment
+                    </Button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Payment Options Modal */}
+      {showPaymentOptions && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            {(() => {
+              const invoice = invoices.find(inv => inv.id === showPaymentOptions);
+              if (!invoice) return null;
+              
+              return (
+                <>
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">Payment Options</h3>
+                      <p className="text-sm text-gray-600">
+                        Invoice {invoice.invoiceNumber} - {invoice.customerName}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowPaymentOptions(null)}
+                      className="text-gray-400 hover:text-gray-600 text-xl"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <PaymentOptions
+                    invoiceId={invoice.id!}
+                    invoiceNumber={invoice.invoiceNumber}
+                    amount={invoice.outstandingAmount || invoice.totalAmount}
+                    currency="INR"
+                    customerName={invoice.customerName}
+                    customerEmail={invoice.customerEmail}
+                    customerPhone={invoice.customerPhone}
+                    description={`Payment for Invoice ${invoice.invoiceNumber}`}
+                    onPaymentMethodSelect={(method, details) => {
+                      console.log('Payment method selected:', method, details);
+                      // You can add additional logic here when payment method is selected
+                    }}
+                  />
+
+                  <div className="mt-6 text-center">
+                    <Button
+                      onClick={() => setShowPaymentOptions(null)}
+                      variant="outline"
+                    >
+                      Close
                     </Button>
                   </div>
                 </>
