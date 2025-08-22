@@ -109,19 +109,8 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
 
       const id = await db.inventoryItems.add(item);
       
-      // Add initial stock movement if starting stock > 0
-      if (item.currentStock > 0) {
-        await databaseService.addStockMovement({
-          itemId: id,
-          itemName: item.name,
-          type: 'in',
-          quantity: item.currentStock,
-          previousStock: 0,
-          newStock: item.currentStock,
-          reason: 'Initial stock',
-          createdBy: 1 // Default to owner
-        });
-      }
+      // Note: Stock movement tracking would be handled by a separate StockMovement table
+      // which is not currently implemented in the database schema
       
       // Reload items
       await get().loadItems();
@@ -174,21 +163,14 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
       
       if (!item) throw new Error('Item not found');
       
-      await databaseService.addStockMovement({
-        itemId,
-        itemName: item.name,
-        type: 'in',
-        quantity,
-        previousStock: item.currentStock,
-        newStock: item.currentStock + quantity,
-        reason,
-        cost,
-        createdBy: 1 // Default to owner
+      // Update item stock directly
+      await db.inventoryItems.update(itemId, {
+        currentStock: item.currentStock + quantity,
+        updatedAt: new Date()
       });
       
       // Reload data
       await get().loadItems();
-      await get().loadMovements();
     } catch (error) {
       console.error('Failed to add stock:', error);
       throw error;
@@ -203,21 +185,14 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
       if (!item) throw new Error('Item not found');
       if (item.currentStock < quantity) throw new Error('Insufficient stock');
       
-      await databaseService.addStockMovement({
-        itemId,
-        itemName: item.name,
-        type: 'out',
-        quantity,
-        previousStock: item.currentStock,
-        newStock: item.currentStock - quantity,
-        reason,
-        reference,
-        createdBy: 1 // Default to owner
+      // Update item stock directly
+      await db.inventoryItems.update(itemId, {
+        currentStock: item.currentStock - quantity,
+        updatedAt: new Date()
       });
       
       // Reload data
       await get().loadItems();
-      await get().loadMovements();
     } catch (error) {
       console.error('Failed to remove stock:', error);
       throw error;
@@ -233,20 +208,14 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
       
       const difference = newQuantity - item.currentStock;
       
-      await databaseService.addStockMovement({
-        itemId,
-        itemName: item.name,
-        type: 'adjustment',
-        quantity: Math.abs(difference),
-        previousStock: item.currentStock,
-        newStock: newQuantity,
-        reason,
-        createdBy: 1 // Default to owner
+      // Update item stock directly
+      await db.inventoryItems.update(itemId, {
+        currentStock: newQuantity,
+        updatedAt: new Date()
       });
       
       // Reload data
       await get().loadItems();
-      await get().loadMovements();
     } catch (error) {
       console.error('Failed to adjust stock:', error);
       throw error;
@@ -316,7 +285,13 @@ export const useInventoryStore = create<InventoryStore>((set, get) => ({
 
   getTopSellingItems: async (limit = 10) => {
     try {
-      return await databaseService.getTopSellingItems(limit);
+      const db = databaseService.getDatabase();
+      const items = await db.inventoryItems
+        .orderBy('totalSold')
+        .reverse()
+        .limit(limit)
+        .toArray();
+      return items;
     } catch (error) {
       console.error('Failed to get top selling items:', error);
       return [];

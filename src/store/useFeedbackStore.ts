@@ -145,7 +145,7 @@ Your SMB Team`;
     // This would need to be calculated against total paid invoices
     // For now, return a simple calculation
     const feedbacks = get().feedbacks;
-    const respondedFeedbacks = feedbacks.filter(f => f.isResponded);
+    const respondedFeedbacks = feedbacks.filter(f => f.responded);
     
     if (feedbacks.length === 0) return 0;
     return (respondedFeedbacks.length / feedbacks.length) * 100;

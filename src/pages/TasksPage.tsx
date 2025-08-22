@@ -61,11 +61,10 @@ export const TasksPage = () => {
         assignedTo: newTask.assignedTo ? parseInt(newTask.assignedTo) : undefined,
         assignedToName: staff.find(s => s.id === parseInt(newTask.assignedTo))?.name,
         customerId: newTask.customerId ? parseInt(newTask.customerId) : undefined,
-        type: newTask.type,
+        type: newTask.type === 'general' ? 'other' : newTask.type,
         priority: newTask.priority,
-        status: 'todo',
+        status: 'pending',
         dueDate: newTask.dueDate ? new Date(newTask.dueDate) : undefined,
-        tags: newTask.tags.split(',').map(tag => tag.trim()).filter(Boolean),
         createdBy: 1 // Default to owner
       });
       
@@ -269,16 +268,6 @@ export const TasksPage = () => {
                   )}
                   <span>Type: {task.type}</span>
                 </div>
-                
-                {task.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {task.tags.map((tag, index) => (
-                      <span key={index} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
               </div>
               
               <div className="ml-4">

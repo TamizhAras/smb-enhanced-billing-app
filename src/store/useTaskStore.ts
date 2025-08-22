@@ -104,7 +104,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       
       const task: Omit<Task, 'id'> = {
         ...taskData,
-        tags: taskData.tags || [],
         createdAt: new Date(),
         updatedAt: new Date(),
         createdBy: currentUser?.id || 1
@@ -153,7 +152,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   completeTask: async (id) => {
     try {
-      await databaseService.completeTask(id);
+      const db = databaseService.getDatabase();
+      await db.tasks.update(id, { 
+        status: 'completed', 
+        completedDate: new Date(),
+        updatedAt: new Date()
+      });
       
       // Reload tasks
       await get().loadTasks();
@@ -212,7 +216,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     tasks.forEach(task => {
       // Status counts
-      if (task.status === 'todo') stats.todo++;
+      if (task.status === 'pending') stats.todo++;
       else if (task.status === 'in-progress') stats.inProgress++;
       else if (task.status === 'completed') stats.completed++;
 

@@ -40,12 +40,13 @@ export const FeedbackPage: React.FC = () => {
   const [selectedRating, setSelectedRating] = useState<string>('all');
   const [isAddingFeedback, setIsAddingFeedback] = useState(false);
   const [newFeedback, setNewFeedback] = useState({
+    customerId: 1,
     customerName: '',
-    customerPhone: '',
-    rating: 5,
-    sentiment: 'happy' as const,
+    rating: 5 as 1 | 2 | 3 | 4 | 5,
+    sentiment: 'positive' as const,
     comment: '',
-    responseMethod: 'whatsapp' as const
+    responseMethod: 'whatsapp' as const,
+    tags: []
   });
 
   useEffect(() => {
@@ -59,17 +60,17 @@ export const FeedbackPage: React.FC = () => {
     await addFeedback({
       ...newFeedback,
       feedbackDate: new Date(),
-      isResponded: false,
-      createdAt: new Date()
+      responded: false
     });
     
     setNewFeedback({
+      customerId: 1,
       customerName: '',
-      customerPhone: '',
-      rating: 5,
-      sentiment: 'happy',
+      rating: 5 as 1 | 2 | 3 | 4 | 5,
+      sentiment: 'positive',
       comment: '',
-      responseMethod: 'whatsapp'
+      responseMethod: 'whatsapp',
+      tags: []
     });
     setIsAddingFeedback(false);
   };
@@ -77,13 +78,13 @@ export const FeedbackPage: React.FC = () => {
   const handleMarkAsResponded = async (id: number) => {
     const feedbackItem = feedback.find(f => f.id === id);
     if (feedbackItem) {
-      await updateFeedback(id, { ...feedbackItem, isResponded: true });
+      await updateFeedback(id, { ...feedbackItem, responded: true });
     }
   };
 
   const filteredFeedback = feedback.filter(fb => {
     const matchesSearch = fb.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         fb.customerPhone?.includes(searchTerm) ||
+                         fb.customerName?.includes(searchTerm) ||
                          fb.comment?.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesSentiment = selectedSentiment === 'all' || fb.sentiment === selectedSentiment;
@@ -93,7 +94,7 @@ export const FeedbackPage: React.FC = () => {
   });
 
   const stats = getFeedbackStats();
-  const pendingResponses = feedback.filter(f => !f.isResponded).length;
+  const pendingResponses = feedback.filter(f => !f.responded).length;
   const averageRating = feedback.length > 0 
     ? (feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length).toFixed(1)
     : '0.0';
@@ -303,7 +304,7 @@ export const FeedbackPage: React.FC = () => {
             Pending Responses ({pendingResponses})
           </h2>
           <div className="space-y-3">
-            {feedback.filter(f => !f.isResponded).slice(0, 3).map((fb) => (
+            {feedback.filter(f => !f.responded).slice(0, 3).map((fb) => (
               <div key={fb.id} className="bg-white p-4 rounded-lg border border-orange-200">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -318,12 +319,6 @@ export const FeedbackPage: React.FC = () => {
                       <p className="text-gray-600 text-sm mb-2">"{fb.comment}"</p>
                     )}
                     <div className="flex items-center gap-2 text-xs text-gray-500">
-                      {fb.customerPhone && (
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {fb.customerPhone}
-                        </div>
-                      )}
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
                         {formatDate(fb.feedbackDate)}
@@ -376,7 +371,7 @@ export const FeedbackPage: React.FC = () => {
                         {getSentimentIcon(fb.sentiment)}
                         <span className="ml-1 capitalize">{fb.sentiment}</span>
                       </span>
-                      {fb.isResponded && (
+                      {fb.responded && (
                         <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full flex items-center gap-1">
                           <CheckCircle className="h-3 w-3" />
                           Responded
@@ -389,12 +384,6 @@ export const FeedbackPage: React.FC = () => {
                     )}
                     
                     <div className="flex items-center gap-4 text-sm text-gray-500">
-                      {fb.customerPhone && (
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {fb.customerPhone}
-                        </div>
-                      )}
                       <div className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
                         {formatDate(fb.feedbackDate)}
@@ -405,7 +394,7 @@ export const FeedbackPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {!fb.isResponded && (
+                  {!fb.responded && (
                     <Button 
                       variant="outline" 
                       size="sm"
@@ -433,16 +422,10 @@ export const FeedbackPage: React.FC = () => {
                 onChange={(e) => setNewFeedback({...newFeedback, customerName: e.target.value})}
                 placeholder="Enter customer name"
               />
-              <Input
-                label="Phone Number"
-                value={newFeedback.customerPhone}
-                onChange={(e) => setNewFeedback({...newFeedback, customerPhone: e.target.value})}
-                placeholder="Enter phone number"
-              />
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Rating *</label>
                 <div className="flex items-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
+                  {([1, 2, 3, 4, 5] as const).map((star) => (
                     <button
                       key={star}
                       onClick={() => setNewFeedback({...newFeedback, rating: star})}

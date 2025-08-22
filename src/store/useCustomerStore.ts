@@ -12,7 +12,7 @@ interface CustomerStore {
   addCustomer: (customerData: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'totalSpent' | 'totalOrders'>) => Promise<void>;
   updateCustomer: (id: number, updates: Partial<Customer>) => Promise<void>;
   deleteCustomer: (id: number) => Promise<void>;
-  addCustomerVisit: (customerId: number, purpose: string, notes?: string) => Promise<void>;
+  addCustomerVisit: (customerId: number, purpose: 'inquiry' | 'purchase' | 'complaint' | 'followup' | 'delivery' | 'other', notes?: string) => Promise<void>;
   getCustomerVisits: (customerId: number) => Promise<CustomerVisit[]>;
   
   // Analytics

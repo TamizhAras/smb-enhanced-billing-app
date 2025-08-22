@@ -53,7 +53,10 @@ export const CustomersPage: React.FC = () => {
   const handleAddCustomer = async () => {
     if (!newCustomer.name.trim()) return;
     
-    await addCustomer(newCustomer);
+    await addCustomer({
+      ...newCustomer,
+      averageOrderValue: 0
+    });
     setNewCustomer({
       name: '',
       email: '',

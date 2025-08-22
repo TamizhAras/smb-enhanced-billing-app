@@ -58,9 +58,9 @@ export default function AIInsightsPage() {
     { value: 'all', label: 'All Insights', count: insights.length },
     { value: 'inventory-optimization', label: 'Inventory', count: insights.filter(i => i.type === 'inventory-optimization').length },
     { value: 'customer-tag', label: 'Customers', count: insights.filter(i => i.type === 'customer-tag').length },
-    { value: 'revenue-forecast', label: 'Revenue', count: insights.filter(i => i.type === 'revenue-forecast').length },
-    { value: 'task-optimization', label: 'Tasks', count: insights.filter(i => i.type === 'task-optimization').length },
-    { value: 'marketing-suggestion', label: 'Marketing', count: insights.filter(i => i.type === 'marketing-suggestion').length }
+    { value: 'payment-delay', label: 'Payment', count: insights.filter(i => i.type === 'payment-delay').length },
+    { value: 'feedback-pattern', label: 'Feedback', count: insights.filter(i => i.type === 'feedback-pattern').length },
+    { value: 'business-opportunity', label: 'Opportunities', count: insights.filter(i => i.type === 'business-opportunity').length }
   ];
 
   const actionableInsights = insights.filter(i => i.actionable && !i.actionTaken);
@@ -263,7 +263,9 @@ export default function AIInsightsPage() {
                         <span className={`px-2 py-1 text-xs rounded-full capitalize ${
                           insight.type === 'inventory-optimization' ? 'bg-blue-100 text-blue-700' :
                           insight.type === 'customer-tag' ? 'bg-green-100 text-green-700' :
-                          insight.type === 'revenue-forecast' ? 'bg-purple-100 text-purple-700' :
+                          insight.type === 'payment-delay' ? 'bg-red-100 text-red-700' :
+                          insight.type === 'feedback-pattern' ? 'bg-yellow-100 text-yellow-700' :
+                          insight.type === 'business-opportunity' ? 'bg-purple-100 text-purple-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
                           {insight.type.replace('-', ' ')}
