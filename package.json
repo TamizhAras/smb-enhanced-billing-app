@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://tamizhaaras.github.io/smb-enhanced-billing-app",
+  "homepage": "https://TamizhAras.github.io/smb-enhanced-billing-app",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
