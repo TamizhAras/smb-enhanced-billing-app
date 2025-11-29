@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { useAuthStore } from './useAuthStore';
+import { API_BASE_URL } from '../lib/apiConfig';
 
-const API_BASE = '/api';
+const API_BASE = API_BASE_URL;
 
 function getAuthHeaders(): HeadersInit {
   const { token } = useAuthStore.getState();

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Invoice } from '../lib/database';
 import jsPDF from 'jspdf';
 import { useAuthStore } from './useAuthStore';
+import { API_BASE_URL } from '../lib/apiConfig';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
@@ -29,7 +30,7 @@ async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
       ...getAuthHeaders(),

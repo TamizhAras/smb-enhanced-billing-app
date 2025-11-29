@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useAuthStore } from './useAuthStore';
+import { API_BASE_URL } from '../lib/apiConfig';
 import type { 
   Invoice, 
   Payment, 
@@ -27,7 +28,7 @@ async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const response = await fetch(`/api${endpoint}`, {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
       ...getAuthHeaders(),
