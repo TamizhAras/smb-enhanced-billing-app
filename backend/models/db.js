@@ -1,9 +1,14 @@
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import pg from 'pg';
+const { Pool } = pg;
 
-export async function getDb() {
-  return open({
-    filename: './database.sqlite',
-    driver: sqlite3.Database
-  });
+let pool;
+
+export function getDb() {
+  if (!pool) {
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    });
+  }
+  return pool;
 }
