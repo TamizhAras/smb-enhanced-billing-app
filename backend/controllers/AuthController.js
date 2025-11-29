@@ -8,29 +8,36 @@ const userService = new UserService();
 
 // Login endpoint
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  const user = await userService.getUserByUsername(username);
-  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-  const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
-  const token = jwt.sign(
-    {
+  try {
+    const { username, password } = req.body;
+    const user = await userService.getUserByUsername(username);
+    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        tenantId: user.tenant_id,
+        branchId: user.branch_id,
+        role: user.role
+      },
+      process.env.JWT_SECRET || 'devsecret',
+      { expiresIn: '8h' }
+    );
+    res.json({ token, user: {
       id: user.id,
-      username: user.username,
+      email: user.email,
+      name: user.name,
       tenantId: user.tenant_id,
       branchId: user.branch_id,
       role: user.role
-    },
-    process.env.JWT_SECRET || 'devsecret',
-    { expiresIn: '8h' }
-  );
-  res.json({ token, user: {
-    id: user.id,
-    username: user.username,
-    tenantId: user.tenant_id,
-    branchId: user.branch_id,
-    role: user.role
-  }});
+    }});
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
+  }
 });
 
 export default router;

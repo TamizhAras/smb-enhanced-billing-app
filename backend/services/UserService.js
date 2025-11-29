@@ -7,11 +7,11 @@ export class UserService {
     this.userRepo = new UserRepository();
   }
 
-  async createUser({ tenantId, branchId, username, password, role }) {
+  async createUser({ tenantId, branchId, name, email, password, role }) {
     const id = uuidv4();
     const passwordHash = await bcrypt.hash(password, 10);
-    await this.userRepo.createUser({ id, tenantId, branchId, username, passwordHash, role });
-    return { id, tenantId, branchId, username, role };
+    await this.userRepo.createUser({ id, tenantId, branchId, name, email, passwordHash, role });
+    return { id, tenantId, branchId, name, email, role };
   }
 
   async getUserByUsername(username) {
