@@ -40,19 +40,19 @@ router.post('/register', async (req, res) => {
     }
     
     // Create tenant
-    const tenant = await tenantService.createTenant(organizationName);
+    const tenant = await tenantService.createTenant(organizationName, adminEmail || `${adminUsername}@example.com`);
     
     // Create default branch
-    const branch = await branchService.createBranch(tenant.id, 'Main Branch', 'retail');
+    const branch = await branchService.createBranch(tenant.id, 'Main Branch');
     
     // Create admin user for this tenant
     const adminUser = await userService.createUser({
       tenantId: tenant.id,
       branchId: branch.id,
-      username: adminUsername,
+      name: adminUsername,
+      email: adminEmail || `${adminUsername}@example.com`,
       password: adminPassword,
-      role: 'owner',
-      email: adminEmail
+      role: 'owner'
     });
     
     res.status(201).json({

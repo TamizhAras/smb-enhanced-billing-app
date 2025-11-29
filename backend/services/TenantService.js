@@ -6,10 +6,10 @@ export class TenantService {
     this.tenantRepo = new TenantRepository();
   }
 
-  async createTenant(name) {
+  async createTenant(name, email) {
     const id = uuidv4();
-    await this.tenantRepo.createTenant({ id, name });
-    return { id, name };
+    await this.tenantRepo.createTenant({ id, name, email });
+    return { id, name, email };
   }
 
   async getTenantById(id) {
