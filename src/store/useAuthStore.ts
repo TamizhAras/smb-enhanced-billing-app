@@ -1,6 +1,7 @@
 import { create } from 'zustand';
+import { API_BASE_URL } from '../lib/apiConfig';
 
-const API_BASE = '/api';
+const API_BASE = API_BASE_URL;
 
 // Session storage key - stores non-sensitive session data
 const SESSION_KEY = 'smb_session';
