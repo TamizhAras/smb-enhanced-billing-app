@@ -2,8 +2,9 @@
 // All API calls automatically include auth headers from the auth store
 
 import { useAuthStore } from '../store/useAuthStore';
+import { API_BASE_URL } from './apiConfig';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'https://smb-enhanced-billing-app.onrender.com/api';
+const API_BASE = API_BASE_URL;
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
