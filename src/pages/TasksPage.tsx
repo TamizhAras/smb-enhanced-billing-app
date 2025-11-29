@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Clock, AlertCircle, CheckCircle2, Users, Search } from 'lucide-react';
 import { useTaskStore } from '../store/useTaskStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
@@ -20,6 +21,9 @@ export const TasksPage = () => {
     getOverdueTasks
   } = useTaskStore();
 
+  // Get branch context for filtering
+  const { selectedBranchId } = useAuthStore();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterAssignee, setFilterAssignee] = useState('all');
@@ -38,7 +42,7 @@ export const TasksPage = () => {
   useEffect(() => {
     loadTasks();
     loadStaff();
-  }, [loadTasks, loadStaff]);
+  }, [loadTasks, loadStaff, selectedBranchId]); // Reload when branch changes
 
   const stats = getTaskStats();
   const overdueTasks = getOverdueTasks();

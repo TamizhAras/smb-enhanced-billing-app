@@ -1,314 +1,254 @@
 import { create } from 'zustand';
-import { databaseService } from '../lib/database';
-import type { InventoryItem, StockMovement } from '../lib/database';
+import { useAuthStore } from './useAuthStore';
+
+const API_BASE = '/api';
+
+function getAuthHeaders(): HeadersInit {
+  const { token } = useAuthStore.getState();
+  const headers: HeadersInit = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+const getBranchContext = () => {
+  const { selectedBranchId, user } = useAuthStore.getState();
+  return {
+    branchId: selectedBranchId || user?.branchId || '',
+    tenantId: user?.tenantId || '',
+    isAllBranches: selectedBranchId === 'all'
+  };
+};
+
+async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers: { ...getAuthHeaders(), ...options.headers },
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(error.error || error.message || `API Error: ${response.status}`);
+  }
+  return response.json();
+}
+
+export interface InventoryItem {
+  id: string;
+  tenant_id: string;
+  branch_id: string;
+  name: string;
+  sku: string;
+  category: string;
+  quantity: number;
+  min_stock_level: number;
+  cost_price: number;
+  selling_price: number;
+  created_at: string;
+  updated_at: string;
+}
 
 interface InventoryStats {
-  totalItems: number;
-  totalValue: number;
-  lowStockItems: number;
-  outOfStockItems: number;
-  totalSold: number;
-  totalRevenue: number;
-  byCategory: Record<string, number>;
-  topSellingItems: InventoryItem[];
-  recentMovements: StockMovement[];
+  total_items: number;
+  total_value: number;
+  low_stock_count: number;
+  out_of_stock_count: number;
 }
 
 interface InventoryStore {
   items: InventoryItem[];
-  movements: StockMovement[];
   categories: string[];
   isLoading: boolean;
-  
-  // Actions
+  error: string | null;
   loadItems: () => Promise<void>;
-  loadMovements: () => Promise<void>;
   loadCategories: () => Promise<void>;
-  
-  // Item CRUD
-  createItem: (item: Omit<InventoryItem, 'id' | 'createdAt' | 'updatedAt' | 'totalSold' | 'totalRevenue' | 'averageMonthlyUsage'>) => Promise<number>;
-  updateItem: (id: number, updates: Partial<InventoryItem>) => Promise<void>;
-  deleteItem: (id: number) => Promise<void>;
-  
-  // Stock management
-  addStock: (itemId: number, quantity: number, reason: string, cost?: number) => Promise<void>;
-  removeStock: (itemId: number, quantity: number, reason: string, reference?: string) => Promise<void>;
-  adjustStock: (itemId: number, newQuantity: number, reason: string) => Promise<void>;
-  
-  // Filtering and searching
+  checkSkuExists: (sku: string, excludeItemId?: string) => boolean;
+  findSimilarItems: (name: string) => InventoryItem[];
+  createItem: (item: Omit<InventoryItem, 'id' | 'created_at' | 'updated_at'>) => Promise<InventoryItem>;
+  updateItem: (id: string, updates: Partial<InventoryItem>) => Promise<InventoryItem>;
+  deleteItem: (id: string) => Promise<void>;
+  adjustStock: (itemId: string, quantityChange: number, reason: string) => Promise<InventoryItem>;
   getItemsByCategory: (category: string) => InventoryItem[];
   getLowStockItems: () => InventoryItem[];
   getOutOfStockItems: () => InventoryItem[];
   searchItems: (query: string) => InventoryItem[];
-  
-  // Analytics
   getInventoryStats: () => Promise<InventoryStats>;
-  getTopSellingItems: (limit?: number) => Promise<InventoryItem[]>;
-  getProfitMargin: (itemId: number) => number;
-  
-  // Alerts
+  getProfitMargin: (itemId: string) => number;
   generateLowStockAlerts: () => InventoryItem[];
 }
 
 export const useInventoryStore = create<InventoryStore>((set, get) => ({
   items: [],
-  movements: [],
   categories: [],
   isLoading: false,
+  error: null,
 
   loadItems: async () => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
     try {
-      const db = databaseService.getDatabase();
-      const items = await db.inventoryItems.where('isActive').equals(1).toArray();
-      set({ items });
+      const { isAllBranches } = getBranchContext();
+      const queryParam = isAllBranches ? '?branch=all' : '';
+      const items = await apiFetch<InventoryItem[]>(`/inventory${queryParam}`);
+      set({ items, isLoading: false });
     } catch (error) {
       console.error('Failed to load inventory items:', error);
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  loadMovements: async () => {
-    try {
-      const db = databaseService.getDatabase();
-      const movements = await db.stockMovements
-        .orderBy('createdAt')
-        .reverse()
-        .limit(100)
-        .toArray();
-      set({ movements });
-    } catch (error) {
-      console.error('Failed to load stock movements:', error);
+      set({ error: (error as Error).message, isLoading: false });
     }
   },
 
   loadCategories: async () => {
     try {
-      const items = get().items;
-      const categories = [...new Set(items.map(item => item.category))].sort();
+      const { isAllBranches } = getBranchContext();
+      const queryParam = isAllBranches ? '?branch=all' : '';
+      const categories = await apiFetch<string[]>(`/inventory/meta/categories${queryParam}`);
       set({ categories });
     } catch (error) {
       console.error('Failed to load categories:', error);
+      const items = get().items;
+      const categories = [...new Set(items.map(item => item.category))].sort();
+      set({ categories });
     }
+  },
+
+  checkSkuExists: (sku: string, excludeItemId?: string): boolean => {
+    if (!sku || !sku.trim()) return false;
+    const items = get().items;
+    return items.some(item => 
+      item.sku?.toLowerCase() === sku.toLowerCase() && 
+      (excludeItemId ? item.id !== excludeItemId : true)
+    );
+  },
+
+  findSimilarItems: (name: string): InventoryItem[] => {
+    if (!name || name.trim().length < 2) return [];
+    const items = get().items;
+    const searchTerm = name.toLowerCase().trim();
+    return items.filter(item => {
+      const itemName = item.name.toLowerCase();
+      return itemName.includes(searchTerm) || searchTerm.includes(itemName);
+    }).slice(0, 5);
   },
 
   createItem: async (itemData) => {
+    set({ isLoading: true, error: null });
     try {
-      const db = databaseService.getDatabase();
-      
-      const item: Omit<InventoryItem, 'id'> = {
-        ...itemData,
-        tags: itemData.tags || [],
-        totalSold: 0,
-        totalRevenue: 0,
-        averageMonthlyUsage: 0,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-
-      const id = await db.inventoryItems.add(item);
-      
-      // Note: Stock movement tracking would be handled by a separate StockMovement table
-      // which is not currently implemented in the database schema
-      
-      // Reload items
-      await get().loadItems();
-      await get().loadCategories();
-      
-      return id;
+      const { branchId } = getBranchContext();
+      const payload = { ...itemData, branch_id: itemData.branch_id || branchId };
+      const newItem = await apiFetch<InventoryItem>('/inventory', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      set(state => ({ items: [newItem, ...state.items], isLoading: false }));
+      const categories = get().categories;
+      if (!categories.includes(newItem.category)) get().loadCategories();
+      return newItem;
     } catch (error) {
-      console.error('Failed to create item:', error);
+      console.error('Failed to create inventory item:', error);
+      set({ error: (error as Error).message, isLoading: false });
       throw error;
     }
   },
 
-  updateItem: async (id, updates) => {
+  updateItem: async (id: string, updates: Partial<InventoryItem>) => {
+    set({ isLoading: true, error: null });
     try {
-      const db = databaseService.getDatabase();
-      await db.inventoryItems.update(id, {
-        ...updates,
-        updatedAt: new Date()
+      const updatedItem = await apiFetch<InventoryItem>(`/inventory/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
       });
-      
-      // Reload items
-      await get().loadItems();
-      await get().loadCategories();
+      set(state => ({
+        items: state.items.map(item => item.id === id ? updatedItem : item),
+        isLoading: false
+      }));
+      if (updates.category) get().loadCategories();
+      return updatedItem;
     } catch (error) {
-      console.error('Failed to update item:', error);
+      console.error('Failed to update inventory item:', error);
+      set({ error: (error as Error).message, isLoading: false });
       throw error;
     }
   },
 
-  deleteItem: async (id) => {
+  deleteItem: async (id: string) => {
+    set({ isLoading: true, error: null });
     try {
-      const db = databaseService.getDatabase();
-      await db.inventoryItems.update(id, { 
-        isActive: false,
-        updatedAt: new Date()
-      });
-      
-      // Reload items
-      await get().loadItems();
+      await apiFetch(`/inventory/${id}`, { method: 'DELETE' });
+      set(state => ({
+        items: state.items.filter(item => item.id !== id),
+        isLoading: false
+      }));
     } catch (error) {
-      console.error('Failed to delete item:', error);
+      console.error('Failed to delete inventory item:', error);
+      set({ error: (error as Error).message, isLoading: false });
       throw error;
     }
   },
 
-  addStock: async (itemId, quantity, reason, cost) => {
+  adjustStock: async (itemId: string, quantityChange: number, reason: string) => {
+    set({ isLoading: true, error: null });
     try {
-      const db = databaseService.getDatabase();
-      const item = await db.inventoryItems.get(itemId);
-      
-      if (!item) throw new Error('Item not found');
-      
-      // Update item stock directly
-      await db.inventoryItems.update(itemId, {
-        currentStock: item.currentStock + quantity,
-        updatedAt: new Date()
+      const result = await apiFetch<InventoryItem>(`/inventory/${itemId}/adjust-stock`, {
+        method: 'POST',
+        body: JSON.stringify({ quantity_change: quantityChange, reason })
       });
-      
-      // Reload data
-      await get().loadItems();
-    } catch (error) {
-      console.error('Failed to add stock:', error);
-      throw error;
-    }
-  },
-
-  removeStock: async (itemId, quantity, reason, reference) => {
-    try {
-      const db = databaseService.getDatabase();
-      const item = await db.inventoryItems.get(itemId);
-      
-      if (!item) throw new Error('Item not found');
-      if (item.currentStock < quantity) throw new Error('Insufficient stock');
-      
-      // Update item stock directly
-      await db.inventoryItems.update(itemId, {
-        currentStock: item.currentStock - quantity,
-        updatedAt: new Date()
-      });
-      
-      // Reload data
-      await get().loadItems();
-    } catch (error) {
-      console.error('Failed to remove stock:', error);
-      throw error;
-    }
-  },
-
-  adjustStock: async (itemId, newQuantity, reason) => {
-    try {
-      const db = databaseService.getDatabase();
-      const item = await db.inventoryItems.get(itemId);
-      
-      if (!item) throw new Error('Item not found');
-      
-      const difference = newQuantity - item.currentStock;
-      
-      // Update item stock directly
-      await db.inventoryItems.update(itemId, {
-        currentStock: newQuantity,
-        updatedAt: new Date()
-      });
-      
-      // Reload data
-      await get().loadItems();
+      set(state => ({
+        items: state.items.map(item => item.id === itemId ? result : item),
+        isLoading: false
+      }));
+      return result;
     } catch (error) {
       console.error('Failed to adjust stock:', error);
+      set({ error: (error as Error).message, isLoading: false });
       throw error;
     }
   },
 
-  getItemsByCategory: (category) => {
+  getItemsByCategory: (category: string) => {
     return get().items.filter(item => item.category === category);
   },
 
   getLowStockItems: () => {
-    return get().items.filter(item => 
-      item.currentStock <= item.minStockLevel && item.currentStock > 0
-    );
+    return get().items.filter(item => item.quantity <= item.min_stock_level);
   },
 
   getOutOfStockItems: () => {
-    return get().items.filter(item => item.currentStock <= 0);
+    return get().items.filter(item => item.quantity === 0);
   },
 
-  searchItems: (query) => {
-    const searchTerm = query.toLowerCase();
-    return get().items.filter(item =>
+  searchItems: (query: string) => {
+    if (!query || query.trim().length === 0) return get().items;
+    const searchTerm = query.toLowerCase().trim();
+    return get().items.filter(item => 
       item.name.toLowerCase().includes(searchTerm) ||
-      item.description?.toLowerCase().includes(searchTerm) ||
-      item.sku?.toLowerCase().includes(searchTerm) ||
-      item.tags.some(tag => tag.toLowerCase().includes(searchTerm))
+      item.sku.toLowerCase().includes(searchTerm) ||
+      item.category.toLowerCase().includes(searchTerm)
     );
   },
 
   getInventoryStats: async () => {
     try {
-      const items = get().items;
-      const movements = get().movements;
-      
-      const totalItems = items.length;
-      const totalValue = items.reduce((sum, item) => sum + (item.currentStock * item.price), 0);
-      const lowStockItems = get().getLowStockItems().length;
-      const outOfStockItems = get().getOutOfStockItems().length;
-      const totalSold = items.reduce((sum, item) => sum + item.totalSold, 0);
-      const totalRevenue = items.reduce((sum, item) => sum + item.totalRevenue, 0);
-      
-      const byCategory: Record<string, number> = {};
-      items.forEach(item => {
-        byCategory[item.category] = (byCategory[item.category] || 0) + 1;
-      });
-      
-      const topSellingItems = await get().getTopSellingItems(5);
-      const recentMovements = movements.slice(0, 10);
-      
-      return {
-        totalItems,
-        totalValue,
-        lowStockItems,
-        outOfStockItems,
-        totalSold,
-        totalRevenue,
-        byCategory,
-        topSellingItems,
-        recentMovements
-      };
+      const { isAllBranches } = getBranchContext();
+      const queryParam = isAllBranches ? '?branch=all' : '';
+      const stats = await apiFetch<InventoryStats>(`/inventory/stats/summary${queryParam}`);
+      return stats;
     } catch (error) {
       console.error('Failed to get inventory stats:', error);
-      throw error;
+      const items = get().items;
+      return {
+        total_items: items.length,
+        total_value: items.reduce((sum, item) => sum + (item.quantity * item.cost_price), 0),
+        low_stock_count: items.filter(item => item.quantity <= item.min_stock_level).length,
+        out_of_stock_count: items.filter(item => item.quantity === 0).length
+      };
     }
   },
 
-  getTopSellingItems: async (limit = 10) => {
-    try {
-      const db = databaseService.getDatabase();
-      const items = await db.inventoryItems
-        .orderBy('totalSold')
-        .reverse()
-        .limit(limit)
-        .toArray();
-      return items;
-    } catch (error) {
-      console.error('Failed to get top selling items:', error);
-      return [];
-    }
-  },
-
-  getProfitMargin: (itemId) => {
+  getProfitMargin: (itemId: string) => {
     const item = get().items.find(i => i.id === itemId);
-    if (!item || !item.cost) return 0;
-    
-    return ((item.price - item.cost) / item.price) * 100;
+    if (!item || item.cost_price === 0) return 0;
+    const profit = item.selling_price - item.cost_price;
+    return (profit / item.cost_price) * 100;
   },
 
   generateLowStockAlerts: () => {
-    const lowStockItems = get().getLowStockItems();
-    const outOfStockItems = get().getOutOfStockItems();
-    
-    return [...outOfStockItems, ...lowStockItems];
+    return get().items.filter(item => item.quantity <= item.min_stock_level);
   }
 }));

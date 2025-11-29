@@ -1,7 +1,50 @@
 import { create } from 'zustand';
-import { db } from '../lib/database';
 import type { Invoice } from '../lib/database';
 import jsPDF from 'jspdf';
+import { useAuthStore } from './useAuthStore';
+
+// Helper function to get auth headers
+function getAuthHeaders(): HeadersInit {
+  const { token } = useAuthStore.getState();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+// Helper function to get tenant/branch context
+function getBranchContext() {
+  const { user, selectedBranchId } = useAuthStore.getState();
+  return {
+    tenantId: user?.tenantId || '',
+    branchId: selectedBranchId || user?.branchId || '',
+  };
+}
+
+// Generic API fetch wrapper
+async function apiFetch<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Request failed' }));
+    throw new Error(error.message || `API Error: ${response.status}`);
+  }
+
+  const result = await response.json();
+  return result.data || result;
+}
 
 interface InvoiceStore {
   invoices: Invoice[];
@@ -9,10 +52,10 @@ interface InvoiceStore {
   error: string | null;
   
   // Actions
-  loadInvoices: () => Promise<void>;
+  loadInvoices: (token?: string, branchId?: string) => Promise<void>;
   addInvoice: (invoiceData: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
-  updateInvoice: (id: number, updates: Partial<Invoice>) => Promise<void>;
-  deleteInvoice: (id: number) => Promise<void>;
+  updateInvoice: (id: string, updates: Partial<Invoice>) => Promise<void>;
+  deleteInvoice: (id: string) => Promise<void>;
   downloadInvoicePDF: (invoice: Invoice) => void;
   
   // Computed values
@@ -26,12 +69,14 @@ export const useInvoiceStore = create<InvoiceStore>((set, get) => ({
   isLoading: false,
   error: null,
 
-  loadInvoices: async () => {
+  loadInvoices: async (_token, _branchId) => {
     set({ isLoading: true, error: null });
     try {
-      const invoices = await db.invoices.orderBy('createdAt').reverse().toArray();
+      // Fetch from backend API
+      const invoices = await apiFetch<Invoice[]>('/invoices');
       set({ invoices, isLoading: false });
     } catch (error) {
+      console.error('Failed to load invoices:', error);
       set({ error: 'Failed to load invoices', isLoading: false });
     }
   },
@@ -39,27 +84,14 @@ export const useInvoiceStore = create<InvoiceStore>((set, get) => ({
   addInvoice: async (invoiceData) => {
     set({ isLoading: true, error: null });
     try {
-      await db.invoices.add({
-        ...invoiceData,
-        createdAt: new Date(),
-        updatedAt: new Date()
+      await apiFetch('/invoices', {
+        method: 'POST',
+        body: JSON.stringify(invoiceData)
       });
-      
-      // Update customer spending if customerId exists
-      if (invoiceData.customerId && invoiceData.status === 'paid') {
-        const customer = await db.customers.get(invoiceData.customerId);
-        if (customer) {
-          await db.customers.update(invoiceData.customerId, {
-            totalSpent: customer.totalSpent + invoiceData.totalAmount,
-            totalOrders: customer.totalOrders + 1,
-            lastOrderDate: new Date(),
-            updatedAt: new Date()
-          });
-        }
-      }
       
       await get().loadInvoices();
     } catch (error) {
+      console.error('Failed to add invoice:', error);
       set({ error: 'Failed to add invoice', isLoading: false });
     }
   },
@@ -67,9 +99,14 @@ export const useInvoiceStore = create<InvoiceStore>((set, get) => ({
   updateInvoice: async (id, updates) => {
     set({ isLoading: true, error: null });
     try {
-      await db.invoices.update(id, { ...updates, updatedAt: new Date() });
+      await apiFetch(`/invoices/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
+      
       await get().loadInvoices();
     } catch (error) {
+      console.error('Failed to update invoice:', error);
       set({ error: 'Failed to update invoice', isLoading: false });
     }
   },
@@ -77,9 +114,13 @@ export const useInvoiceStore = create<InvoiceStore>((set, get) => ({
   deleteInvoice: async (id) => {
     set({ isLoading: true, error: null });
     try {
-      await db.invoices.delete(id);
+      await apiFetch(`/invoices/${id}`, {
+        method: 'DELETE'
+      });
+      
       await get().loadInvoices();
     } catch (error) {
+      console.error('Failed to delete invoice:', error);
       set({ error: 'Failed to delete invoice', isLoading: false });
     }
   },

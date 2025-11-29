@@ -13,6 +13,10 @@ export interface Invoice {
   dueDate: Date;
   status: 'draft' | 'pending' | 'paid' | 'overdue' | 'cancelled' | 'partial';
   
+  // Multi-tenant/branch support
+  tenantId?: string;
+  branchId?: string;
+  
   // Enhanced financial fields
   items: {
     id?: number;
@@ -185,8 +189,12 @@ export interface Customer {
   gstNumber?: string;
   panNumber?: string;
   
+  // Multi-tenant/branch support
+  tenantId?: string;
+  branchId?: string;
+  
   // Customer categorization
-  type?: 'individual' | 'business';
+  type?: 'regular' | 'vip' | 'wholesale' | 'retail';
   category?: string;
   tags: string[];
   
@@ -225,6 +233,11 @@ export interface Feedback {
   responseDate?: Date;
   responseNote?: string;
   tags: string[];
+  
+  // Multi-tenant/branch support
+  tenantId?: string;
+  branchId?: string;
+  
   createdAt: Date;
 }
 
@@ -264,6 +277,11 @@ export interface Task {
     author: string;
     timestamp: Date;
   }[];
+  
+  // Multi-tenant/branch support
+  tenantId?: string;
+  branchId?: string;
+  
   createdAt: Date;
   updatedAt: Date;
   createdBy: number;
@@ -285,6 +303,11 @@ export interface InventoryItem {
   supplierContact?: string;
   isActive: boolean;
   tags: string[];
+  
+  // Multi-tenant/branch support
+  tenantId?: string;
+  branchId?: string;
+  
   createdAt: Date;
   updatedAt: Date;
   // Analytics fields
@@ -327,19 +350,29 @@ export interface Staff {
   };
   isActive: boolean;
   lastLogin?: Date;
+  
+  // Multi-tenant/branch support
+  tenantId?: string;
+  branchId?: string;
+  
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface AIInsight {
-  id?: number;
-  type: 'customer-tag' | 'payment-delay' | 'feedback-pattern' | 'inventory-optimization' | 'business-opportunity';
+  id?: number | string;
+  type: 'customer-tag' | 'payment-delay' | 'feedback-pattern' | 'inventory-optimization' | 'business-opportunity' | 'revenue-forecast' | 'marketing-suggestion' | 'task-optimization';
   title: string;
   description: string;
   confidence: number; // 0-100
   data: any; // Flexible JSON data
   actionable: boolean;
   actionTaken?: boolean;
+  
+  // Multi-tenant/branch support
+  tenantId?: string;
+  branchId?: string;
+  
   createdAt: Date;
   expiresAt?: Date;
 }
@@ -408,6 +441,25 @@ export class SMBDatabase extends Dexie {
       stockMovements: '++id, itemId, type, quantity, createdAt, createdBy',
       staff: '++id, name, email, role, isActive, createdAt',
       aiInsights: '++id, type, confidence, actionable, createdAt, expiresAt'
+    });
+
+    // Version 4 - Multi-tenant support with tenantId indexes
+    this.version(4).stores({
+      customers: '++id, name, email, phone, tenantId, branchId, createdAt, updatedAt, status, totalSpent, totalOrders',
+      invoices: '++id, invoiceNumber, customerId, customerName, tenantId, branchId, issueDate, dueDate, status, totalAmount, paidAmount, outstandingAmount, currency, isRecurring, parentInvoiceId, createdAt',
+      payments: '++id, invoiceId, invoiceNumber, customerId, amount, method, paymentDate, createdAt',
+      feedbacks: '++id, customerId, invoiceId, customerName, tenantId, branchId, rating, sentiment, feedbackDate, responseMethod',
+      customerVisits: '++id, customerId, visitDate, purpose, followUpRequired',
+      // Enhanced billing tables
+      companySettings: '++id, companyName, defaultCurrency, defaultTaxRate, invoicePrefix, updatedAt',
+      taxRates: '++id, name, rate, isDefault, createdAt',
+      invoiceTemplates: '++id, name, layout, isDefault, createdAt',
+      // Phase 3 tables with tenant support
+      tasks: '++id, title, assignedTo, customerId, tenantId, branchId, type, priority, status, dueDate, createdAt, createdBy',
+      inventoryItems: '++id, name, category, sku, tenantId, branchId, currentStock, minStockLevel, isActive, totalSold, createdAt',
+      stockMovements: '++id, itemId, type, quantity, createdAt, createdBy',
+      staff: '++id, name, email, tenantId, branchId, role, isActive, createdAt',
+      aiInsights: '++id, type, tenantId, branchId, confidence, actionable, createdAt, expiresAt'
     });
 
     // Hooks for automatic timestamps and calculations

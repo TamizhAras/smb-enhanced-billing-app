@@ -1,9 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useEnhancedInvoiceStore } from '../store/useEnhancedInvoiceStore';
+import { useCustomerStore } from '../store/useCustomerStore';
+import { useInventoryStore } from '../store/useInventoryStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { PaymentOptions } from '../components/PaymentOptions';
+import { updatePaymentConfig, getPaymentConfig } from '../lib/paymentUtils';
+
+// Helper function to safely format dates (handles Date objects, ISO strings, null, undefined)
+const formatDate = (date: Date | string | null | undefined): string => {
+  if (!date) return '-';
+  try {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(dateObj.getTime())) return '-';
+    return dateObj.toLocaleDateString();
+  } catch {
+    return '-';
+  }
+};
+
+// Helper function to safely format currency
+const formatCurrency = (amount: number | null | undefined, currency: string = 'INR'): string => {
+  if (amount === null || amount === undefined || isNaN(amount)) return '₹0.00';
+  const symbol = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : '₹';
+  return `${symbol}${amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 import { 
   PlusIcon, 
   MagnifyingGlassIcon, 
@@ -19,7 +42,15 @@ import {
   PrinterIcon,
   PaperAirplaneIcon,
   ChatBubbleLeftRightIcon,
-  DevicePhoneMobileIcon
+  DevicePhoneMobileIcon,
+  UserPlusIcon,
+  UserIcon,
+  TrashIcon,
+  BanknotesIcon,
+  ArrowTrendingUpIcon,
+  ArrowTrendingDownIcon,
+  CheckCircleIcon,
+  InboxIcon
 } from '@heroicons/react/24/outline';
 
 export default function BillingPage() {
@@ -56,9 +87,31 @@ export default function BillingPage() {
     sendInvoiceSMS,
     processRecurringInvoices,
     addInvoice,
+    deleteInvoice,
     generateInvoiceNumber,
     updateCommunicationSettings
   } = useEnhancedInvoiceStore();
+
+  // Customer store for phone-based lookup
+  const { 
+    customers, 
+    loadCustomers, 
+    searchByPhone, 
+    getCustomerByPhone,
+    addCustomer 
+  } = useCustomerStore();
+
+  // Inventory store for item selection
+  const {
+    items: inventoryItems,
+    loadItems: loadInventoryItems,
+    searchItems: searchInventoryItems,
+    adjustStock
+  } = useInventoryStore();
+
+  // Get branch context for filtering
+  const { selectedBranchId, branches } = useAuthStore();
+  const currentBranch = branches.find(b => b.id === selectedBranchId);
 
   const [selectedTab, setSelectedTab] = useState<'invoices' | 'payments' | 'analytics' | 'settings'>('invoices');
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
@@ -68,6 +121,14 @@ export default function BillingPage() {
 
   // Communication dropdown state
   const [showCommMenu, setShowCommMenu] = useState<number | null>(null);
+
+  // Delete invoice state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<typeof invoices[0] | null>(null);
+
+  // Item search state for inventory autocomplete
+  const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
+  const [itemSearchResults, setItemSearchResults] = useState<typeof inventoryItems>([]);
 
   // Payment form state
   const [paymentForm, setPaymentForm] = useState({
@@ -119,6 +180,24 @@ _This is an automated message. Reply to speak with our team._`,
     smsTemplate: ''
   });
 
+  // Payment settings state
+  const [paymentSettings, setPaymentSettings] = useState({
+    businessName: 'Your Business Name',
+    businessUPI: 'yourbusiness@paytm',
+    businessEmail: 'business@example.com',
+    businessPhone: '+91XXXXXXXXXX',
+    bankAccountNumber: 'XXXXXXXXXXXX',
+    bankIFSC: 'BANKXXXXX',
+    bankName: 'Your Bank Name',
+    accountHolderName: 'Your Business Name',
+    razorpayKeyId: 'rzp_test_xxxxxxxxxx',
+    razorpayKeySecret: '',
+    enableUPI: true,
+    enableRazorpay: false,
+    enablePayPal: false,
+    enableBankTransfer: true
+  });
+
   // New Invoice Form State
   const [newInvoice, setNewInvoice] = useState({
     customerName: '',
@@ -127,22 +206,31 @@ _This is an automated message. Reply to speak with our team._`,
     customerAddress: '',
     issueDate: new Date().toISOString().split('T')[0],
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    items: [{ description: '', quantity: 1, rate: 0 }],
+    items: [{ description: '', quantity: 1, rate: 0, inventoryItemId: undefined as string | undefined, availableStock: undefined as number | undefined }],
     taxRate: 18,
     notes: '',
     status: 'pending' as const
   });
 
+  // Phone search state for customer lookup
+  const [phoneSearchResults, setPhoneSearchResults] = useState<typeof customers>([]);
+  const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+  const [isNewCustomer, setIsNewCustomer] = useState(false);
+
   useEffect(() => {
     loadInvoices();
     loadPayments();
     loadCompanySettings();
+    loadCustomers(); // Load customers for phone lookup
+    loadInventoryItems(); // Load inventory for item selection
     loadTaxRates();
     loadInvoiceTemplates();
     
     // Process recurring invoices on page load
     processRecurringInvoices();
-  }, []);
+  }, [selectedBranchId]); // Reload when branch changes
 
   // Load communication settings when company settings change
   useEffect(() => {
@@ -154,23 +242,100 @@ _This is an automated message. Reply to speak with our team._`,
     }
   }, [companySettings]);
 
+  // Load payment settings from localStorage
+  useEffect(() => {
+    const savedPaymentSettings = localStorage.getItem('paymentSettings');
+    if (savedPaymentSettings) {
+      try {
+        const parsed = JSON.parse(savedPaymentSettings);
+        setPaymentSettings(prev => ({ ...prev, ...parsed }));
+        
+        // Update payment configuration
+        updatePaymentConfig({
+          businessName: parsed.businessName || paymentSettings.businessName,
+          businessUPI: parsed.businessUPI || paymentSettings.businessUPI,
+          businessEmail: parsed.businessEmail || paymentSettings.businessEmail,
+          businessPhone: parsed.businessPhone || paymentSettings.businessPhone,
+          keyId: parsed.razorpayKeyId || paymentSettings.razorpayKeyId,
+          keySecret: parsed.razorpayKeySecret || paymentSettings.razorpayKeySecret
+        });
+      } catch (error) {
+        console.error('Failed to load payment settings:', error);
+      }
+    }
+  }, []);
+
+  // Keyboard shortcuts - Based on efficiency heuristics
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in input fields
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      // N - New Invoice
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setShowCreateInvoice(true);
+      }
+      
+      // Escape - Close modals
+      if (e.key === 'Escape') {
+        setShowCreateInvoice(false);
+        setShowPaymentModal(null);
+        setShowPaymentOptions(null);
+        setShowDeleteConfirm(false);
+      }
+      
+      // 1-4 - Switch tabs
+      if (e.key === '1') setSelectedTab('invoices');
+      if (e.key === '2') setSelectedTab('payments');
+      if (e.key === '3') setSelectedTab('analytics');
+      if (e.key === '4') setSelectedTab('settings');
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Check if invoice is overdue (past due date and not paid/cancelled)
+  const isInvoiceOverdue = (invoice: typeof invoices[0]) => {
+    if (!invoice.dueDate || invoice.status === 'paid' || invoice.status === 'cancelled') {
+      return false;
+    }
+    const dueDate = typeof invoice.dueDate === 'string' ? new Date(invoice.dueDate) : invoice.dueDate;
+    return dueDate < new Date();
+  };
+
   const filteredInvoices = getFilteredInvoices();
   const totalRevenue = getTotalRevenue();
   const pendingAmount = getPendingPayments();
-  const overdueInvoices = getOverdueInvoices();
+  const overdueInvoices = invoices.filter(invoice => isInvoiceOverdue(invoice));
   const recentInvoices = getRecentInvoices(5);
   const paymentAnalytics = getPaymentAnalytics();
   const revenueAnalytics = getRevenueAnalytics();
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'paid': return 'text-green-600 bg-green-100';
-      case 'pending': return 'text-yellow-600 bg-yellow-100';
-      case 'overdue': return 'text-red-600 bg-red-100';
-      case 'draft': return 'text-gray-600 bg-gray-100';
-      case 'cancelled': return 'text-gray-500 bg-gray-100';
-      case 'partial': return 'text-blue-600 bg-blue-100';
-      default: return 'text-gray-600 bg-gray-100';
+      case 'paid': return 'text-green-700 bg-green-100 border border-green-200';
+      case 'pending': return 'text-yellow-700 bg-yellow-100 border border-yellow-200';
+      case 'overdue': return 'text-red-700 bg-red-100 border border-red-200 animate-pulse';
+      case 'draft': return 'text-gray-600 bg-gray-100 border border-gray-200';
+      case 'cancelled': return 'text-gray-500 bg-gray-50 border border-gray-200 line-through';
+      case 'partial': return 'text-blue-700 bg-blue-100 border border-blue-200';
+      default: return 'text-gray-600 bg-gray-100 border border-gray-200';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'paid': return '✓';
+      case 'pending': return '⏳';
+      case 'overdue': return '⚠️';
+      case 'draft': return '📝';
+      case 'cancelled': return '✕';
+      case 'partial': return '◐';
+      default: return '';
     }
   };
 
@@ -218,11 +383,111 @@ _This is an automated message. Reply to speak with our team._`,
     }
   };
 
+  // Delete invoice handler
+  const handleDeleteInvoice = async () => {
+    if (!invoiceToDelete?.id) return;
+    
+    try {
+      await deleteInvoice(invoiceToDelete.id);
+      setShowDeleteConfirm(false);
+      setInvoiceToDelete(null);
+    } catch (error) {
+      console.error('Failed to delete invoice:', error);
+      alert('Failed to delete invoice. Please try again.');
+    }
+  };
+
+  // Phone search handler with debounce
+  const handlePhoneSearch = useCallback((phone: string) => {
+    setNewInvoice(prev => ({ ...prev, customerPhone: phone }));
+    
+    // Only search if phone has at least 3 digits
+    const digitsOnly = phone.replace(/\D/g, '');
+    if (digitsOnly.length >= 3) {
+      const results = searchByPhone(phone);
+      setPhoneSearchResults(results);
+      setShowPhoneDropdown(results.length > 0);
+      
+      // Check for exact match (10 digits)
+      if (digitsOnly.length === 10) {
+        const exactMatch = getCustomerByPhone(phone);
+        if (exactMatch) {
+          // Don't auto-select, let user choose from dropdown
+        } else {
+          // Phone not found - show option to add new customer
+          setShowPhoneDropdown(true);
+        }
+      }
+    } else {
+      setPhoneSearchResults([]);
+      setShowPhoneDropdown(false);
+    }
+    
+    // Reset customer selection if phone changes
+    setSelectedCustomerId(null);
+    setIsNewCustomer(false);
+  }, [searchByPhone, getCustomerByPhone]);
+
+  // Select existing customer from dropdown
+  const handleSelectCustomer = (customer: typeof customers[0]) => {
+    setSelectedCustomerId(customer.id || null);
+    setNewInvoice(prev => ({
+      ...prev,
+      customerName: customer.name,
+      customerEmail: customer.email || '',
+      customerPhone: customer.phone || '',
+      customerAddress: customer.address || ''
+    }));
+    setShowPhoneDropdown(false);
+    setIsNewCustomer(false);
+  };
+
+  // Handle adding new customer
+  const handleAddNewCustomer = async () => {
+    if (!newInvoice.customerName.trim()) {
+      alert('Please enter customer name');
+      return;
+    }
+    
+    try {
+      await addCustomer({
+        name: newInvoice.customerName,
+        email: newInvoice.customerEmail || undefined,
+        phone: newInvoice.customerPhone,
+        address: newInvoice.customerAddress || undefined,
+        status: 'active',
+        tags: [],
+        averageOrderValue: 0
+      });
+      
+      // Reload customers and find the new one
+      await loadCustomers();
+      const newCustomer = getCustomerByPhone(newInvoice.customerPhone);
+      if (newCustomer) {
+        setSelectedCustomerId(newCustomer.id || null);
+      }
+      
+      setShowNewCustomerForm(false);
+      setIsNewCustomer(true);
+    } catch (error) {
+      console.error('Failed to add customer:', error);
+      alert('Failed to add customer. Please try again.');
+    }
+  };
+
+  // Mark as new customer (without saving yet)
+  const handleMarkAsNewCustomer = () => {
+    setShowPhoneDropdown(false);
+    setShowNewCustomerForm(true);
+    setIsNewCustomer(true);
+    setSelectedCustomerId(null);
+  };
+
   // Invoice form helper functions
   const addItem = () => {
     setNewInvoice(prev => ({
       ...prev,
-      items: [...prev.items, { description: '', quantity: 1, rate: 0 }]
+      items: [...prev.items, { description: '', quantity: 1, rate: 0, inventoryItemId: undefined, availableStock: undefined }]
     }));
   };
 
@@ -240,6 +505,58 @@ _This is an automated message. Reply to speak with our team._`,
         i === index ? { ...item, [field]: value } : item
       )
     }));
+  };
+
+  // Handle item description search for inventory autocomplete
+  const handleItemSearch = (index: number, searchText: string) => {
+    updateItem(index, 'description', searchText);
+    
+    if (searchText.trim().length >= 2) {
+      const results = searchInventoryItems(searchText);
+      setItemSearchResults(results.slice(0, 5)); // Limit to 5 results
+      setActiveItemIndex(index);
+    } else {
+      setItemSearchResults([]);
+      setActiveItemIndex(null);
+    }
+  };
+
+  // Get stock status for an inventory item
+  const getStockStatus = (inventoryItemId: string | undefined, requestedQty: number) => {
+    if (!inventoryItemId) return null;
+    const item = inventoryItems.find(inv => inv.id === inventoryItemId);
+    if (!item) return null;
+
+    const availableStock = item.quantity;
+    const isOutOfStock = availableStock === 0;
+    const isLowStock = availableStock > 0 && availableStock <= item.min_stock_level;
+    const isInsufficient = requestedQty > availableStock;
+
+    return {
+      availableStock,
+      isOutOfStock,
+      isLowStock,
+      isInsufficient,
+      item
+    };
+  };
+
+  // Select inventory item and populate fields
+  const handleSelectInventoryItem = (index: number, inventoryItem: typeof inventoryItems[0]) => {
+    setNewInvoice(prev => ({
+      ...prev,
+      items: prev.items.map((item, i) => 
+        i === index ? { 
+          ...item, 
+          description: inventoryItem.name,
+          rate: inventoryItem.selling_price,
+          inventoryItemId: inventoryItem.id, // Track which inventory item was selected
+          availableStock: inventoryItem.quantity // Store available stock for validation
+        } : item
+      )
+    }));
+    setItemSearchResults([]);
+    setActiveItemIndex(null);
   };
 
   const calculateSubtotal = () => {
@@ -262,9 +579,32 @@ _This is an automated message. Reply to speak with our team._`,
       return;
     }
 
+    // If it's a new customer with phone, save them first
+    let customerId = selectedCustomerId || 0;
+    if (isNewCustomer && newInvoice.customerPhone && !selectedCustomerId) {
+      try {
+        await addCustomer({
+          name: newInvoice.customerName,
+          email: newInvoice.customerEmail || undefined,
+          phone: newInvoice.customerPhone,
+          address: newInvoice.customerAddress || undefined,
+          status: 'active',
+          tags: [],
+          averageOrderValue: 0
+        });
+        await loadCustomers();
+        const newCustomer = getCustomerByPhone(newInvoice.customerPhone);
+        if (newCustomer?.id) {
+          customerId = newCustomer.id;
+        }
+      } catch (error) {
+        console.error('Failed to save new customer:', error);
+      }
+    }
+
     const invoiceData = {
       invoiceNumber: generateInvoiceNumber(),
-      customerId: 0, // Will be set when customer is selected
+      customerId: customerId,
       customerName: newInvoice.customerName,
       customerEmail: newInvoice.customerEmail,
       customerPhone: newInvoice.customerPhone,
@@ -286,6 +626,30 @@ _This is an automated message. Reply to speak with our team._`,
     try {
       await addInvoice(invoiceData);
       
+      // Reduce inventory stock for each item
+      for (const item of invoiceData.items) {
+        // Find matching inventory item by name
+        const inventoryItem = inventoryItems.find(
+          inv => inv.name.toLowerCase() === item.description.toLowerCase()
+        );
+        
+        if (inventoryItem?.id) {
+          try {
+            await adjustStock(
+              inventoryItem.id,
+              -item.quantity, // Negative to reduce stock
+              `Sold - Invoice ${invoiceData.invoiceNumber}`
+            );
+          } catch (stockError) {
+            console.error(`Failed to reduce stock for ${item.description}:`, stockError);
+            // Continue with other items even if one fails
+          }
+        }
+      }
+      
+      // Reload inventory to reflect changes
+      await loadInventoryItems();
+      
       // Reset form
       setNewInvoice({
         customerName: '',
@@ -294,11 +658,17 @@ _This is an automated message. Reply to speak with our team._`,
         customerAddress: '',
         issueDate: new Date().toISOString().split('T')[0],
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        items: [{ description: '', quantity: 1, rate: 0 }],
+        items: [{ description: '', quantity: 1, rate: 0, inventoryItemId: undefined, availableStock: undefined }],
         taxRate: 18,
         notes: '',
         status: 'pending'
       });
+      // Reset customer lookup state
+      setSelectedCustomerId(null);
+      setIsNewCustomer(false);
+      setShowNewCustomerForm(false);
+      setPhoneSearchResults([]);
+      setShowPhoneDropdown(false);
       setShowCreateInvoice(false);
     } catch (error) {
       console.error('Failed to create invoice:', error);
@@ -313,6 +683,28 @@ _This is an automated message. Reply to speak with our team._`,
     } catch (error) {
       console.error('Failed to save communication settings:', error);
       alert('❌ Failed to save settings. Please try again.');
+    }
+  };
+
+  const handleSavePaymentSettings = async () => {
+    try {
+      // Update payment configuration in the utility
+      updatePaymentConfig({
+        businessName: paymentSettings.businessName,
+        businessUPI: paymentSettings.businessUPI,
+        businessEmail: paymentSettings.businessEmail,
+        businessPhone: paymentSettings.businessPhone,
+        keyId: paymentSettings.razorpayKeyId,
+        keySecret: paymentSettings.razorpayKeySecret
+      });
+
+      // Save to localStorage for persistence
+      localStorage.setItem('paymentSettings', JSON.stringify(paymentSettings));
+      
+      alert('✅ Payment settings saved successfully!');
+    } catch (error) {
+      console.error('Failed to save payment settings:', error);
+      alert('❌ Failed to save payment settings. Please try again.');
     }
   };
 
@@ -417,26 +809,61 @@ _This is an automated message. Reply to speak with our team._`,
         </Card>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+      {/* Tab Navigation - Enhanced with badges and status indicators */}
+      <div className="border-b border-gray-200 bg-white">
+        <nav className="-mb-px flex space-x-1 px-2">
           {[
-            { id: 'invoices', name: 'Invoices', icon: DocumentTextIcon },
-            { id: 'payments', name: 'Payments', icon: CreditCardIcon },
-            { id: 'analytics', name: 'Analytics', icon: ChartBarIcon },
-            { id: 'settings', name: 'Settings', icon: Cog6ToothIcon }
+            { 
+              id: 'invoices', 
+              name: 'Invoices', 
+              icon: DocumentTextIcon,
+              badge: invoices.length,
+              badgeColor: 'bg-gray-100 text-gray-600'
+            },
+            { 
+              id: 'payments', 
+              name: 'Payments', 
+              icon: CreditCardIcon,
+              badge: invoices.filter(i => i.status === 'pending' || i.status === 'partial').length,
+              badgeColor: invoices.filter(i => i.status === 'pending' || i.status === 'partial').length > 0 
+                ? 'bg-yellow-100 text-yellow-700' 
+                : 'bg-gray-100 text-gray-600',
+              alert: invoices.filter(i => i.status === 'overdue').length > 0
+            },
+            { 
+              id: 'analytics', 
+              name: 'Analytics', 
+              icon: ChartBarIcon,
+              badge: null,
+              badgeColor: ''
+            },
+            { 
+              id: 'settings', 
+              name: 'Settings', 
+              icon: Cog6ToothIcon,
+              badge: null,
+              badgeColor: ''
+            }
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setSelectedTab(tab.id as any)}
               className={`${
                 selectedTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              } whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center`}
+                  ? 'border-blue-500 text-blue-600 bg-blue-50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+              } whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm flex items-center rounded-t-lg transition-all duration-200`}
             >
-              <tab.icon className="h-4 w-4 mr-2" />
+              <tab.icon className={`h-5 w-5 mr-2 ${selectedTab === tab.id ? 'text-blue-500' : 'text-gray-400'}`} />
               {tab.name}
+              {tab.badge !== null && tab.badge > 0 && (
+                <span className={`ml-2 px-2 py-0.5 text-xs font-semibold rounded-full ${tab.badgeColor}`}>
+                  {tab.badge}
+                </span>
+              )}
+              {tab.alert && (
+                <span className="ml-1 h-2 w-2 bg-red-500 rounded-full animate-pulse" title="Has overdue invoices"></span>
+              )}
             </button>
           ))}
         </nav>
@@ -445,6 +872,91 @@ _This is an automated message. Reply to speak with our team._`,
       {/* Invoices Tab */}
       {selectedTab === 'invoices' && (
         <div className="space-y-6">
+          {/* KPI Summary Cards - Based on F-Pattern reading principle */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Revenue Card */}
+            <Card className="p-4 border-l-4 border-l-green-500 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Revenue</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(getTotalRevenue())}</p>
+                  <p className="text-xs text-green-600 mt-1 flex items-center">
+                    <ArrowTrendingUpIcon className="h-3 w-3 mr-1" />
+                    From {invoices.filter(i => i.status === 'paid').length} paid invoices
+                  </p>
+                </div>
+                <div className="p-3 bg-green-100 rounded-full">
+                  <BanknotesIcon className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+            </Card>
+
+            {/* Pending Payments Card */}
+            <Card className={`p-4 border-l-4 hover:shadow-md transition-shadow ${
+              getPendingPayments() > 0 ? 'border-l-yellow-500 bg-yellow-50' : 'border-l-gray-300'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Pending</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(getPendingPayments())}</p>
+                  <p className="text-xs text-yellow-600 mt-1 flex items-center">
+                    <ClockIcon className="h-3 w-3 mr-1" />
+                    {invoices.filter(i => i.status === 'pending' || i.status === 'partial').length} awaiting payment
+                  </p>
+                </div>
+                <div className={`p-3 rounded-full ${getPendingPayments() > 0 ? 'bg-yellow-100' : 'bg-gray-100'}`}>
+                  <ClockIcon className={`h-6 w-6 ${getPendingPayments() > 0 ? 'text-yellow-600' : 'text-gray-400'}`} />
+                </div>
+              </div>
+            </Card>
+
+            {/* Overdue Card */}
+            {(() => {
+              const overdueInvoicesList = invoices.filter(invoice => isInvoiceOverdue(invoice));
+              const overdueAmount = overdueInvoicesList.reduce((sum, inv) => sum + (inv.outstandingAmount || inv.totalAmount), 0);
+              const hasOverdue = overdueInvoicesList.length > 0;
+              
+              return (
+                <Card className={`p-4 border-l-4 hover:shadow-md transition-shadow ${
+                  hasOverdue ? 'border-l-red-500 bg-red-50' : 'border-l-gray-300'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Overdue</p>
+                      <p className="text-2xl font-bold text-gray-900 mt-1">
+                        {formatCurrency(overdueAmount)}
+                      </p>
+                      <p className={`text-xs mt-1 flex items-center ${hasOverdue ? 'text-red-600' : 'text-gray-500'}`}>
+                        <ExclamationTriangleIcon className="h-3 w-3 mr-1" />
+                        {overdueInvoicesList.length} invoice{overdueInvoicesList.length !== 1 ? 's' : ''} overdue
+                      </p>
+                    </div>
+                    <div className={`p-3 rounded-full ${hasOverdue ? 'bg-red-100 animate-pulse' : 'bg-gray-100'}`}>
+                      <ExclamationTriangleIcon className={`h-6 w-6 ${hasOverdue ? 'text-red-600' : 'text-gray-400'}`} />
+                    </div>
+                  </div>
+                </Card>
+              );
+            })()}
+
+            {/* Total Invoices Card */}
+            <Card className="p-4 border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Invoices</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{invoices.length}</p>
+                  <p className="text-xs text-blue-600 mt-1 flex items-center">
+                    <CheckCircleIcon className="h-3 w-3 mr-1" />
+                    {invoices.filter(i => i.status === 'paid').length} paid ({invoices.length > 0 ? Math.round((invoices.filter(i => i.status === 'paid').length / invoices.length) * 100) : 0}%)
+                  </p>
+                </div>
+                <div className="p-3 bg-blue-100 rounded-full">
+                  <DocumentTextIcon className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </Card>
+          </div>
+
           {/* Search and Filters */}
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
@@ -508,6 +1020,35 @@ _This is an automated message. Reply to speak with our team._`,
 
           {/* Invoices Table */}
           <Card>
+            {/* Loading State */}
+            {isLoading && (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                <p className="text-gray-500 text-sm">Loading invoices...</p>
+              </div>
+            )}
+            
+            {/* Empty State */}
+            {!isLoading && filteredInvoices.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-16 px-4">
+                <div className="bg-gray-100 rounded-full p-6 mb-4">
+                  <InboxIcon className="h-12 w-12 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No invoices found</h3>
+                <p className="text-gray-500 text-center max-w-sm mb-6">
+                  {searchQuery || statusFilter !== 'all' 
+                    ? "No invoices match your current filters. Try adjusting your search or filter criteria."
+                    : "Get started by creating your first invoice. Track payments and manage your business finances."}
+                </p>
+                <Button onClick={() => setShowCreateInvoice(true)} className="flex items-center">
+                  <PlusIcon className="h-5 w-5 mr-2" />
+                  Create Your First Invoice
+                </Button>
+              </div>
+            )}
+            
+            {/* Table Content */}
+            {!isLoading && filteredInvoices.length > 0 && (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -546,7 +1087,7 @@ _This is an automated message. Reply to speak with our team._`,
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredInvoices.map((invoice) => (
-                    <tr key={invoice.id} className="hover:bg-gray-50">
+                    <tr key={invoice.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <input
                           type="checkbox"
@@ -565,7 +1106,7 @@ _This is an automated message. Reply to speak with our team._`,
                           {invoice.invoiceNumber}
                         </div>
                         <div className="text-sm text-gray-500">
-                          {invoice.issueDate.toLocaleDateString()}
+                          {formatDate(invoice.issueDate)}
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -589,18 +1130,24 @@ _This is an automated message. Reply to speak with our team._`,
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(invoice.status)}`}>
-                          {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
-                        </span>
+                        {(() => {
+                          const displayStatus = isInvoiceOverdue(invoice) ? 'overdue' : invoice.status;
+                          return (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(displayStatus)}`}>
+                              <span className="mr-1">{getStatusIcon(displayStatus)}</span>
+                              {displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1)}
+                            </span>
+                          );
+                        })()}
                         {invoice.isRecurring && (
                           <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                            Recurring
+                            🔄 Recurring
                           </span>
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {invoice.dueDate.toLocaleDateString()}
-                        {invoice.dueDate < new Date() && invoice.status !== 'paid' && (
+                        {formatDate(invoice.dueDate)}
+                        {invoice.dueDate && new Date(invoice.dueDate) < new Date() && invoice.status !== 'paid' && (
                           <div className="text-red-500 text-xs">Overdue</div>
                         )}
                       </td>
@@ -666,6 +1213,18 @@ _This is an automated message. Reply to speak with our team._`,
                               </Button>
                             </>
                           )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setInvoiceToDelete(invoice);
+                              setShowDeleteConfirm(true);
+                            }}
+                            title="Delete Invoice"
+                            className="text-red-600 hover:bg-red-50"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -673,6 +1232,7 @@ _This is an automated message. Reply to speak with our team._`,
                 </tbody>
               </table>
             </div>
+            )}
           </Card>
         </div>
       )}
@@ -680,9 +1240,69 @@ _This is an automated message. Reply to speak with our team._`,
       {/* Payments Tab */}
       {selectedTab === 'payments' && (
         <div className="space-y-6">
+          {/* Payment Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="p-4 border-l-4 border-l-green-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase">Total Collected</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {formatCurrency(payments.reduce((sum, p) => sum + p.amount, 0))}
+                  </p>
+                </div>
+                <div className="p-3 bg-green-100 rounded-full">
+                  <CheckCircleIcon className="h-6 w-6 text-green-600" />
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4 border-l-4 border-l-blue-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase">This Month</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {formatCurrency(payments.filter(p => {
+                      const now = new Date();
+                      const paymentDate = typeof p.paymentDate === 'string' ? new Date(p.paymentDate) : p.paymentDate;
+                      if (!paymentDate || isNaN(paymentDate.getTime())) return false;
+                      return paymentDate.getMonth() === now.getMonth() && 
+                             paymentDate.getFullYear() === now.getFullYear();
+                    }).reduce((sum, p) => sum + p.amount, 0))}
+                  </p>
+                </div>
+                <div className="p-3 bg-blue-100 rounded-full">
+                  <CreditCardIcon className="h-6 w-6 text-blue-600" />
+                </div>
+              </div>
+            </Card>
+            <Card className="p-4 border-l-4 border-l-purple-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase">Total Transactions</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{payments.length}</p>
+                </div>
+                <div className="p-3 bg-purple-100 rounded-full">
+                  <BanknotesIcon className="h-6 w-6 text-purple-600" />
+                </div>
+              </div>
+            </Card>
+          </div>
+
           <Card>
             <div className="p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Payments</h3>
+              
+              {/* Empty State for Payments */}
+              {payments.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="bg-gray-100 rounded-full p-6 mb-4">
+                    <CreditCardIcon className="h-12 w-12 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No payments yet</h3>
+                  <p className="text-gray-500 text-center max-w-sm">
+                    Payments will appear here once customers pay their invoices. Create an invoice to get started.
+                  </p>
+                </div>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -706,9 +1326,9 @@ _This is an automated message. Reply to speak with our team._`,
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {payments.slice(0, 10).map((payment) => (
-                      <tr key={payment.id}>
+                      <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {payment.paymentDate.toLocaleDateString()}
+                          {formatDate(payment.paymentDate)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           {payment.invoiceNumber}
@@ -729,6 +1349,7 @@ _This is an automated message. Reply to speak with our team._`,
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           </Card>
 
@@ -1161,42 +1782,48 @@ _This is an automated message. Reply to speak with our team._`,
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Business Name</label>
                     <Input
-                      defaultValue="Your Business Name"
+                      value={paymentSettings.businessName}
+                      onChange={(e) => setPaymentSettings(prev => ({ ...prev, businessName: e.target.value }))}
                       placeholder="Enter your business name"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">UPI ID</label>
                     <Input
-                      defaultValue="yourbusiness@paytm"
+                      value={paymentSettings.businessUPI}
+                      onChange={(e) => setPaymentSettings(prev => ({ ...prev, businessUPI: e.target.value }))}
                       placeholder="your-business@bank"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Bank Account Number</label>
                     <Input
-                      defaultValue="XXXXXXXXXXXX"
+                      value={paymentSettings.bankAccountNumber}
+                      onChange={(e) => setPaymentSettings(prev => ({ ...prev, bankAccountNumber: e.target.value }))}
                       placeholder="Your bank account number"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">IFSC Code</label>
                     <Input
-                      defaultValue="BANKXXXXX"
+                      value={paymentSettings.bankIFSC}
+                      onChange={(e) => setPaymentSettings(prev => ({ ...prev, bankIFSC: e.target.value }))}
                       placeholder="Bank IFSC code"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Bank Name</label>
                     <Input
-                      defaultValue="Your Bank Name"
+                      value={paymentSettings.bankName}
+                      onChange={(e) => setPaymentSettings(prev => ({ ...prev, bankName: e.target.value }))}
                       placeholder="Name of your bank"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Account Holder Name</label>
                     <Input
-                      defaultValue="Your Business Name"
+                      value={paymentSettings.accountHolderName}
+                      onChange={(e) => setPaymentSettings(prev => ({ ...prev, accountHolderName: e.target.value }))}
                       placeholder="Account holder name"
                     />
                   </div>
@@ -1230,6 +1857,8 @@ _This is an automated message. Reply to speak with our team._`,
                     <label className="block text-sm font-medium text-gray-700 mb-2">Razorpay Key ID</label>
                     <Input
                       type="password"
+                      value={paymentSettings.razorpayKeyId}
+                      onChange={(e) => setPaymentSettings(prev => ({ ...prev, razorpayKeyId: e.target.value }))}
                       placeholder="rzp_test_xxxxxxxxxx"
                     />
                     <p className="text-xs text-gray-500 mt-1">Your Razorpay API Key ID</p>
@@ -1238,6 +1867,8 @@ _This is an automated message. Reply to speak with our team._`,
                     <label className="block text-sm font-medium text-gray-700 mb-2">Razorpay Key Secret</label>
                     <Input
                       type="password"
+                      value={paymentSettings.razorpayKeySecret}
+                      onChange={(e) => setPaymentSettings(prev => ({ ...prev, razorpayKeySecret: e.target.value }))}
                       placeholder="Enter your secret key"
                     />
                     <p className="text-xs text-gray-500 mt-1">Keep this secret and secure!</p>
@@ -1245,7 +1876,10 @@ _This is an automated message. Reply to speak with our team._`,
                 </div>
               </div>
 
-              <Button className="bg-green-600 hover:bg-green-700 text-white">
+              <Button 
+                onClick={handleSavePaymentSettings}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
                 💾 Save Payment Settings
               </Button>
             </div>
@@ -1318,49 +1952,150 @@ _This is an automated message. Reply to speak with our team._`,
             </div>
 
             <div className="space-y-6">
-              {/* Customer Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
+              {/* Customer Information - Phone First Approach */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center">
+                  <UserIcon className="w-4 h-4 mr-2" />
+                  Customer Information
+                </h4>
+                
+                {/* Phone Number Input with Autocomplete */}
+                <div className="mb-4 relative">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Customer Name *
+                    Mobile Number *
                   </label>
-                  <Input
-                    value={newInvoice.customerName}
-                    onChange={(e) => setNewInvoice(prev => ({ ...prev, customerName: e.target.value }))}
-                    placeholder="Enter customer name"
-                  />
+                  <div className="relative">
+                    <DevicePhoneMobileIcon className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <Input
+                      type="tel"
+                      value={newInvoice.customerPhone}
+                      onChange={(e) => handlePhoneSearch(e.target.value)}
+                      onFocus={() => {
+                        if (phoneSearchResults.length > 0) setShowPhoneDropdown(true);
+                      }}
+                      placeholder="Enter 10-digit mobile number"
+                      className="pl-10"
+                      maxLength={10}
+                    />
+                  </div>
+                  
+                  {/* Phone Search Dropdown */}
+                  {showPhoneDropdown && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {phoneSearchResults.length > 0 ? (
+                        <>
+                          {phoneSearchResults.map((customer) => (
+                            <button
+                              key={customer.id}
+                              type="button"
+                              onClick={() => handleSelectCustomer(customer)}
+                              className="w-full px-4 py-3 text-left hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="font-medium text-gray-900">{customer.name}</div>
+                                  <div className="text-sm text-gray-500">📱 {customer.phone}</div>
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                  {customer.totalOrders} orders
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={handleMarkAsNewCustomer}
+                            className="w-full px-4 py-3 text-left hover:bg-green-50 bg-gray-50 flex items-center text-green-600"
+                          >
+                            <UserPlusIcon className="w-5 h-5 mr-2" />
+                            Add as New Customer
+                          </button>
+                        </>
+                      ) : newInvoice.customerPhone.replace(/\D/g, '').length >= 10 ? (
+                        <button
+                          type="button"
+                          onClick={handleMarkAsNewCustomer}
+                          className="w-full px-4 py-3 text-left hover:bg-green-50 flex items-center text-green-600"
+                        >
+                          <UserPlusIcon className="w-5 h-5 mr-2" />
+                          New Customer - Click to add details
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email
-                  </label>
-                  <Input
-                    type="email"
-                    value={newInvoice.customerEmail}
-                    onChange={(e) => setNewInvoice(prev => ({ ...prev, customerEmail: e.target.value }))}
-                    placeholder="customer@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone
-                  </label>
-                  <Input
-                    value={newInvoice.customerPhone}
-                    onChange={(e) => setNewInvoice(prev => ({ ...prev, customerPhone: e.target.value }))}
-                    placeholder="Enter phone number"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Address
-                  </label>
-                  <Input
-                    value={newInvoice.customerAddress}
-                    onChange={(e) => setNewInvoice(prev => ({ ...prev, customerAddress: e.target.value }))}
-                    placeholder="Enter address"
-                  />
-                </div>
+                
+                {/* Customer Status Indicator */}
+                {selectedCustomerId && !isNewCustomer && (
+                  <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center">
+                    <UserIcon className="w-5 h-5 text-green-600 mr-2" />
+                    <div>
+                      <span className="text-green-700 font-medium">Existing Customer: </span>
+                      <span className="text-green-600">{newInvoice.customerName}</span>
+                    </div>
+                  </div>
+                )}
+                
+                {isNewCustomer && (
+                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center">
+                    <UserPlusIcon className="w-5 h-5 text-blue-600 mr-2" />
+                    <span className="text-blue-700">New Customer - Enter details below</span>
+                  </div>
+                )}
+                
+                {/* Customer Details Form */}
+                {(showNewCustomerForm || isNewCustomer || !selectedCustomerId) && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Customer Name *
+                      </label>
+                      <Input
+                        value={newInvoice.customerName}
+                        onChange={(e) => setNewInvoice(prev => ({ ...prev, customerName: e.target.value }))}
+                        placeholder="Enter customer name"
+                        disabled={!!selectedCustomerId && !isNewCustomer}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Email
+                      </label>
+                      <Input
+                        type="email"
+                        value={newInvoice.customerEmail}
+                        onChange={(e) => setNewInvoice(prev => ({ ...prev, customerEmail: e.target.value }))}
+                        placeholder="customer@example.com"
+                        disabled={!!selectedCustomerId && !isNewCustomer}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Address
+                      </label>
+                      <Input
+                        value={newInvoice.customerAddress}
+                        onChange={(e) => setNewInvoice(prev => ({ ...prev, customerAddress: e.target.value }))}
+                        placeholder="Enter address"
+                        disabled={!!selectedCustomerId && !isNewCustomer}
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                {/* Show selected customer details (read-only) */}
+                {selectedCustomerId && !isNewCustomer && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Email</label>
+                      <div className="text-sm text-gray-700">{newInvoice.customerEmail || '-'}</div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Address</label>
+                      <div className="text-sm text-gray-700">{newInvoice.customerAddress || '-'}</div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Invoice Details */}
@@ -1410,14 +2145,91 @@ _This is an automated message. Reply to speak with our team._`,
                   </Button>
                 </div>
                 <div className="space-y-3">
-                  {newInvoice.items.map((item, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-3 items-end">
-                      <div className="col-span-5">
-                        <Input
-                          value={item.description}
-                          onChange={(e) => updateItem(index, 'description', e.target.value)}
-                          placeholder="Item description"
-                        />
+                  {newInvoice.items.map((item, index) => {
+                    const stockStatus = getStockStatus(item.inventoryItemId, item.quantity);
+                    return (
+                    <div key={index} className="grid grid-cols-12 gap-3 items-end relative">
+                      <div className="col-span-5 relative">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={item.description}
+                            onChange={(e) => handleItemSearch(index, e.target.value)}
+                            onFocus={() => {
+                              if (item.description.length >= 2) {
+                                const results = searchInventoryItems(item.description);
+                                setItemSearchResults(results.slice(0, 5));
+                                setActiveItemIndex(index);
+                              }
+                            }}
+                            onBlur={() => {
+                              // Delay to allow click on dropdown
+                              setTimeout(() => {
+                                if (activeItemIndex === index) {
+                                  setItemSearchResults([]);
+                                  setActiveItemIndex(null);
+                                }
+                              }, 200);
+                            }}
+                            placeholder="Search item or type description..."
+                            className={stockStatus?.isInsufficient ? 'border-red-300' : ''}
+                          />
+                          {/* Stock Status Badges */}
+                          {stockStatus && (
+                            <div className="flex flex-col gap-1">
+                              {stockStatus.isOutOfStock && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 whitespace-nowrap">
+                                  ⚠️ Out of Stock
+                                </span>
+                              )}
+                              {!stockStatus.isOutOfStock && stockStatus.isInsufficient && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 whitespace-nowrap">
+                                  ⚠️ Only {stockStatus.availableStock} left
+                                </span>
+                              )}
+                              {!stockStatus.isInsufficient && stockStatus.isLowStock && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 whitespace-nowrap">
+                                  ⚠️ Low Stock ({stockStatus.availableStock})
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {/* Inventory Item Dropdown */}
+                        {activeItemIndex === index && itemSearchResults.length > 0 && (
+                          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                            {itemSearchResults.map((invItem) => {
+                              const isOutOfStock = invItem.quantity === 0;
+                              const isLowStock = invItem.quantity > 0 && invItem.quantity <= invItem.min_stock_level;
+                              const stockColor = isOutOfStock ? 'text-red-600' : isLowStock ? 'text-yellow-600' : 'text-green-600';
+                              const stockBadge = isOutOfStock ? '🔴 Out of Stock' : isLowStock ? '🟡 Low Stock' : '🟢 In Stock';
+                              
+                              return (
+                              <button
+                                key={invItem.id}
+                                type="button"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  handleSelectInventoryItem(index, invItem);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-blue-50 border-b border-gray-100 last:border-0"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <div className="flex-1">
+                                    <div className="font-medium text-gray-900 text-sm">{invItem.name}</div>
+                                    <div className="text-xs text-gray-500 flex items-center gap-2">
+                                      {invItem.sku && `SKU: ${invItem.sku} · `}
+                                      <span className={stockColor}>{stockBadge} ({invItem.quantity} units)</span>
+                                    </div>
+                                  </div>
+                                  <div className="text-sm font-medium text-green-600 ml-2">
+                                    ₹{invItem.selling_price.toLocaleString()}
+                                  </div>
+                                </div>
+                              </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                       <div className="col-span-2">
                         <Input
@@ -1425,6 +2237,7 @@ _This is an automated message. Reply to speak with our team._`,
                           value={item.quantity}
                           onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
                           placeholder="Qty"
+                          min={1}
                         />
                       </div>
                       <div className="col-span-2">
@@ -1453,7 +2266,8 @@ _This is an automated message. Reply to speak with our team._`,
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1499,6 +2313,37 @@ _This is an automated message. Reply to speak with our team._`,
                 />
               </div>
             </div>
+
+            {/* Stock Warning Summary */}
+            {(() => {
+              const stockIssues = newInvoice.items
+                .map((item, index) => ({ item, index, stockStatus: getStockStatus(item.inventoryItemId, item.quantity) }))
+                .filter(({ stockStatus }) => stockStatus && (stockStatus.isOutOfStock || stockStatus.isInsufficient));
+              
+              if (stockIssues.length === 0) return null;
+              
+              return (
+                <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <ExclamationTriangleIcon className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-amber-900 mb-2">Stock Availability Warning</h4>
+                      <ul className="text-sm text-amber-800 space-y-1">
+                        {stockIssues.map(({ item, stockStatus }) => (
+                          <li key={item.inventoryItemId}>
+                            <strong>{item.description}</strong>: Requesting {item.quantity} units, 
+                            {stockStatus!.isOutOfStock ? ' but OUT OF STOCK' : ` only ${stockStatus!.availableStock} available`}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-amber-700 mt-2">
+                        ℹ️ You can still create this invoice for pre-orders, back-orders, or services. Stock will be deducted where available.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="flex space-x-3 mt-6 pt-6 border-t">
               <Button 
@@ -1650,6 +2495,7 @@ _This is an automated message. Reply to speak with our team._`,
                     customerEmail={invoice.customerEmail}
                     customerPhone={invoice.customerPhone}
                     description={`Payment for Invoice ${invoice.invoiceNumber}`}
+                    paymentSettings={paymentSettings}
                     onPaymentMethodSelect={(method, details) => {
                       console.log('Payment method selected:', method, details);
                       // You can add additional logic here when payment method is selected
@@ -1670,6 +2516,67 @@ _This is an automated message. Reply to speak with our team._`,
           </div>
         </div>
       )}
+
+      {/* Delete Invoice Confirmation Modal */}
+      {showDeleteConfirm && invoiceToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md p-6">
+            <div className="flex items-center mb-4 text-red-600">
+              <ExclamationTriangleIcon className="w-6 h-6 mr-2" />
+              <h2 className="text-xl font-bold">Delete Invoice</h2>
+            </div>
+            <p className="text-gray-700 mb-2">
+              Are you sure you want to delete this invoice?
+            </p>
+            <div className="bg-gray-50 p-3 rounded-lg mb-4">
+              <div className="text-sm">
+                <div><strong>Invoice #:</strong> {invoiceToDelete.invoiceNumber}</div>
+                <div><strong>Customer:</strong> {invoiceToDelete.customerName}</div>
+                <div><strong>Amount:</strong> {formatCurrency(invoiceToDelete.totalAmount)}</div>
+                <div><strong>Status:</strong> {invoiceToDelete.status}</div>
+              </div>
+            </div>
+            <p className="text-sm text-orange-600 mb-4">
+              ⚠️ This action cannot be undone.
+            </p>
+            <div className="flex space-x-2">
+              <Button
+                onClick={handleDeleteInvoice}
+                className="flex-1 bg-red-600 hover:bg-red-700"
+              >
+                Delete Invoice
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setInvoiceToDelete(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Floating Action Button (FAB) - Based on Fitts's Law for easy access */}
+      <div className="fixed bottom-6 right-6 z-40">
+        <button
+          onClick={() => setShowCreateInvoice(true)}
+          className="group flex items-center justify-center w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+          title="Create New Invoice (Press N)"
+        >
+          <PlusIcon className="h-6 w-6" />
+        </button>
+        {/* Tooltip */}
+        <div className="absolute bottom-16 right-0 hidden group-hover:block">
+          <div className="bg-gray-900 text-white text-xs rounded py-1 px-2 whitespace-nowrap">
+            New Invoice <kbd className="ml-1 bg-gray-700 px-1 rounded">N</kbd>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

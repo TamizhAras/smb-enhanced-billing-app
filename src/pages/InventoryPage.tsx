@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { Package, Plus, AlertTriangle, TrendingUp, Search } from 'lucide-react';
-import { useInventoryStore } from '../store/useInventoryStore';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Package, Plus, AlertTriangle, TrendingUp, Search, Info, Trash2 } from 'lucide-react';
+import { useInventoryStore, type InventoryItem } from '../store/useInventoryStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
-import type { InventoryItem } from '../lib/database';
 
 export const InventoryPage = () => {
   const {
@@ -14,21 +14,29 @@ export const InventoryPage = () => {
     loadItems,
     loadCategories,
     createItem,
-    addStock,
-    removeStock,
+    deleteItem,
     adjustStock,
     searchItems,
     getLowStockItems,
     getOutOfStockItems,
-    getInventoryStats
+    getInventoryStats,
+    findSimilarItems
   } = useInventoryStore();
+
+  // Get branch context for filtering
+  const { selectedBranchId } = useAuthStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showStockModal, setShowStockModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<InventoryItem | null>(null);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [stats, setStats] = useState<any>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [similarItems, setSimilarItems] = useState<InventoryItem[]>([]);
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(false);
   const [stockAction, setStockAction] = useState<'add' | 'remove' | 'adjust'>('add');
   const [stockData, setStockData] = useState({
     quantity: '',
@@ -39,25 +47,43 @@ export const InventoryPage = () => {
 
   const [newItem, setNewItem] = useState({
     name: '',
-    description: '',
     category: '',
     sku: '',
-    price: '',
-    cost: '',
-    currentStock: '',
-    minStockLevel: '',
-    maxStockLevel: '',
-    unit: 'piece',
-    supplier: '',
-    supplierContact: '',
-    tags: ''
+    selling_price: '',
+    cost_price: '',
+    quantity: '',
+    min_stock_level: '',
+    tenant_id: '',
+    branch_id: ''
   });
+
+  // Debounced search for similar items as user types
+  const searchSimilarItems = useCallback(async (name: string) => {
+    if (name.trim().length >= 2) {
+      const similar = await findSimilarItems(name);
+      setSimilarItems(similar);
+      setShowDuplicateWarning(similar.length > 0);
+    } else {
+      setSimilarItems([]);
+      setShowDuplicateWarning(false);
+    }
+  }, [findSimilarItems]);
+
+  // Handle name change with debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (showCreateForm && newItem.name) {
+        searchSimilarItems(newItem.name);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [newItem.name, showCreateForm, searchSimilarItems]);
 
   useEffect(() => {
     loadItems();
     loadCategories();
     loadStats();
-  }, [loadItems, loadCategories]);
+  }, [loadItems, loadCategories, selectedBranchId]); // Reload when branch changes
 
   const loadStats = async () => {
     try {
@@ -79,48 +105,44 @@ export const InventoryPage = () => {
 
   const handleCreateItem = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     try {
       await createItem({
         name: newItem.name,
-        description: newItem.description || undefined,
         category: newItem.category,
-        sku: newItem.sku || undefined,
-        price: parseFloat(newItem.price),
-        cost: newItem.cost ? parseFloat(newItem.cost) : undefined,
-        currentStock: parseInt(newItem.currentStock),
-        minStockLevel: parseInt(newItem.minStockLevel),
-        maxStockLevel: newItem.maxStockLevel ? parseInt(newItem.maxStockLevel) : undefined,
-        unit: newItem.unit,
-        supplier: newItem.supplier || undefined,
-        supplierContact: newItem.supplierContact || undefined,
-        isActive: true,
-        tags: newItem.tags.split(',').map(tag => tag.trim()).filter(Boolean)
+        sku: newItem.sku,
+        selling_price: parseFloat(newItem.selling_price),
+        cost_price: parseFloat(newItem.cost_price),
+        quantity: parseInt(newItem.quantity),
+        min_stock_level: parseInt(newItem.min_stock_level),
+        tenant_id: newItem.tenant_id,
+        branch_id: newItem.branch_id
       });
       
       setShowCreateForm(false);
       resetNewItem();
       loadStats();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to create item:', error);
+      setFormError(error?.message || 'Failed to create item. Please try again.');
     }
   };
 
   const resetNewItem = () => {
     setNewItem({
       name: '',
-      description: '',
       category: '',
       sku: '',
-      price: '',
-      cost: '',
-      currentStock: '',
-      minStockLevel: '',
-      maxStockLevel: '',
-      unit: 'piece',
-      supplier: '',
-      supplierContact: '',
-      tags: ''
+      selling_price: '',
+      cost_price: '',
+      quantity: '',
+      min_stock_level: '',
+      tenant_id: '',
+      branch_id: ''
     });
+    setSimilarItems([]);
+    setShowDuplicateWarning(false);
+    setFormError(null);
   };
 
   const handleStockAction = async (e: React.FormEvent) => {
@@ -129,32 +151,18 @@ export const InventoryPage = () => {
 
     try {
       const quantity = parseInt(stockData.quantity);
+      let quantityChange = quantity;
       
-      switch (stockAction) {
-        case 'add':
-          await addStock(
-            selectedItem.id!,
-            quantity,
-            stockData.reason,
-            stockData.cost ? parseFloat(stockData.cost) : undefined
-          );
-          break;
-        case 'remove':
-          await removeStock(
-            selectedItem.id!,
-            quantity,
-            stockData.reason,
-            stockData.reference || undefined
-          );
-          break;
-        case 'adjust':
-          await adjustStock(
-            selectedItem.id!,
-            quantity,
-            stockData.reason
-          );
-          break;
+      // For remove, make quantity negative
+      if (stockAction === 'remove') {
+        quantityChange = -quantity;
       }
+      
+      await adjustStock(
+        selectedItem.id,
+        quantityChange,
+        stockData.reason || `${stockAction} stock`
+      );
       
       setShowStockModal(false);
       setSelectedItem(null);
@@ -165,9 +173,21 @@ export const InventoryPage = () => {
     }
   };
 
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
+    try {
+      await deleteItem(itemToDelete.id);
+      setShowDeleteConfirm(false);
+      setItemToDelete(null);
+      loadStats();
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+    }
+  };
+
   const getStockStatus = (item: InventoryItem) => {
-    if (item.currentStock <= 0) return { label: 'Out of Stock', color: 'text-red-600 bg-red-50' };
-    if (item.currentStock <= item.minStockLevel) return { label: 'Low Stock', color: 'text-orange-600 bg-orange-50' };
+    if (item.quantity <= 0) return { label: 'Out of Stock', color: 'text-red-600 bg-red-50' };
+    if (item.quantity <= item.min_stock_level) return { label: 'Low Stock', color: 'text-orange-600 bg-orange-50' };
     return { label: 'In Stock', color: 'text-green-600 bg-green-50' };
   };
 
@@ -200,7 +220,7 @@ export const InventoryPage = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Items</p>
-                <p className="text-2xl font-bold">{stats.totalItems}</p>
+                <p className="text-2xl font-bold">{stats.total_items || 0}</p>
               </div>
               <Package className="w-8 h-8 text-blue-500" />
             </div>
@@ -210,7 +230,7 @@ export const InventoryPage = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Value</p>
-                <p className="text-2xl font-bold">₹{stats.totalValue.toLocaleString()}</p>
+                <p className="text-2xl font-bold">₹{(stats.total_value || 0).toLocaleString()}</p>
               </div>
               <TrendingUp className="w-8 h-8 text-green-500" />
             </div>
@@ -220,7 +240,7 @@ export const InventoryPage = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Low Stock</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.lowStockItems}</p>
+                <p className="text-2xl font-bold text-orange-600">{stats.low_stock_count || 0}</p>
               </div>
               <AlertTriangle className="w-8 h-8 text-orange-500" />
             </div>
@@ -230,7 +250,7 @@ export const InventoryPage = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Out of Stock</p>
-                <p className="text-2xl font-bold text-red-600">{stats.outOfStockItems}</p>
+                <p className="text-2xl font-bold text-red-600">{stats.out_of_stock_count || 0}</p>
               </div>
               <AlertTriangle className="w-8 h-8 text-red-500" />
             </div>
@@ -328,14 +348,14 @@ export const InventoryPage = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {item.currentStock} {item.unit}
+                        {item.quantity} units
                       </div>
                       <div className="text-xs text-gray-500">
-                        Min: {item.minStockLevel} {item.unit}
+                        Min: {item.min_stock_level} units
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      ₹{item.price.toLocaleString()}
+                      ₹{item.selling_price.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${status.color}`}>
@@ -352,6 +372,17 @@ export const InventoryPage = () => {
                         }}
                       >
                         Manage Stock
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 hover:bg-red-50"
+                        onClick={() => {
+                          setItemToDelete(item);
+                          setShowDeleteConfirm(true);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
                       </Button>
                     </td>
                   </tr>
@@ -371,33 +402,61 @@ export const InventoryPage = () => {
       {/* Create Item Modal */}
       {showCreateForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg w-full max-w-2xl max-h-96 overflow-y-auto">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <h2 className="text-xl font-bold mb-4">Add New Item</h2>
+              {formError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
+                  {formError}
+                </div>
+              )}
               <form onSubmit={handleCreateItem} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    placeholder="Item name"
-                    value={newItem.name}
-                    onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-                    required
-                  />
-                  <Input
-                    placeholder="SKU (optional)"
-                    value={newItem.sku}
-                    onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })}
-                  />
+                  <div>
+                    <Input
+                      placeholder="Item name"
+                      value={newItem.name}
+                      onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Input
+                      placeholder="SKU (optional, must be unique)"
+                      value={newItem.sku}
+                      onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">SKU must be unique if provided</p>
+                  </div>
                 </div>
+
+                {/* Similar Items Warning */}
+                {showDuplicateWarning && similarItems.length > 0 && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start gap-2">
+                      <Info className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-yellow-800">Similar items found</p>
+                        <p className="text-xs text-yellow-700 mb-2">
+                          These items have similar names. You can still add a new item if needed.
+                        </p>
+                        <div className="space-y-1">
+                          {similarItems.map((item) => (
+                            <div key={item.id} className="text-xs bg-yellow-100 px-2 py-1 rounded flex justify-between">
+                              <span className="font-medium">{item.name}</span>
+                              <span className="text-yellow-600">
+                                {item.sku && `SKU: ${item.sku} · `}
+                                Stock: {item.quantity} units
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
-                <textarea
-                  placeholder="Description (optional)"
-                  value={newItem.description}
-                  onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  rows={2}
-                />
-                
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <Input
                     placeholder="Category"
                     value={newItem.category}
@@ -405,53 +464,44 @@ export const InventoryPage = () => {
                     required
                   />
                   <Input
-                    placeholder="Unit"
-                    value={newItem.unit}
-                    onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                    placeholder="SKU"
+                    value={newItem.sku}
+                    onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })}
                     required
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Price"
-                    value={newItem.price}
-                    onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
-                    required
-                  />
-                </div>
-                
-                <div className="grid grid-cols-3 gap-4">
-                  <Input
-                    type="number"
-                    placeholder="Current Stock"
-                    value={newItem.currentStock}
-                    onChange={(e) => setNewItem({ ...newItem, currentStock: e.target.value })}
-                    required
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Min Stock Level"
-                    value={newItem.minStockLevel}
-                    onChange={(e) => setNewItem({ ...newItem, minStockLevel: e.target.value })}
-                    required
-                  />
-                  <Input
-                    type="number"
-                    placeholder="Max Stock Level"
-                    value={newItem.maxStockLevel}
-                    onChange={(e) => setNewItem({ ...newItem, maxStockLevel: e.target.value })}
                   />
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <Input
-                    placeholder="Supplier (optional)"
-                    value={newItem.supplier}
-                    onChange={(e) => setNewItem({ ...newItem, supplier: e.target.value })}
+                    type="number"
+                    placeholder="Selling Price"
+                    value={newItem.selling_price}
+                    onChange={(e) => setNewItem({ ...newItem, selling_price: e.target.value })}
+                    required
                   />
                   <Input
-                    placeholder="Tags (comma separated)"
-                    value={newItem.tags}
-                    onChange={(e) => setNewItem({ ...newItem, tags: e.target.value })}
+                    type="number"
+                    placeholder="Cost Price"
+                    value={newItem.cost_price}
+                    onChange={(e) => setNewItem({ ...newItem, cost_price: e.target.value })}
+                    required
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    type="number"
+                    placeholder="Initial Quantity"
+                    value={newItem.quantity}
+                    onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
+                    required
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Min Stock Level"
+                    value={newItem.min_stock_level}
+                    onChange={(e) => setNewItem({ ...newItem, min_stock_level: e.target.value })}
+                    required
                   />
                 </div>
                 
@@ -483,7 +533,7 @@ export const InventoryPage = () => {
               Manage Stock: {selectedItem.name}
             </h2>
             <p className="text-sm text-gray-600 mb-4">
-              Current Stock: {selectedItem.currentStock} {selectedItem.unit}
+              Current Stock: {selectedItem.quantity} units
             </p>
             
             <form onSubmit={handleStockAction} className="space-y-4">
@@ -562,6 +612,48 @@ export const InventoryPage = () => {
                 </Button>
               </div>
             </form>
+          </Card>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && itemToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-md p-6">
+            <div className="flex items-center mb-4 text-red-600">
+              <AlertTriangle className="w-6 h-6 mr-2" />
+              <h2 className="text-xl font-bold">Delete Item</h2>
+            </div>
+            <p className="text-gray-700 mb-2">
+              Are you sure you want to delete <strong>{itemToDelete.name}</strong>?
+            </p>
+            {itemToDelete.sku && (
+              <p className="text-sm text-gray-500 mb-2">SKU: {itemToDelete.sku}</p>
+            )}
+            <p className="text-sm text-gray-500 mb-4">
+              Current Stock: {itemToDelete.quantity} units
+            </p>
+            <p className="text-sm text-orange-600 mb-4">
+              This item will be marked as inactive and removed from the list.
+            </p>
+            <div className="flex space-x-2">
+              <Button
+                onClick={handleDeleteItem}
+                className="flex-1 bg-red-600 hover:bg-red-700"
+              >
+                Delete
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setItemToDelete(null);
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
           </Card>
         </div>
       )}

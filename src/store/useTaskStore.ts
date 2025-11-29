@@ -1,6 +1,18 @@
 import { create } from 'zustand';
 import { databaseService } from '../lib/database';
+import { useAuthStore } from './useAuthStore';
+// import { apiGetTasks, apiGetStaff } from '../lib/apiService'; // For future backend integration
 import type { Task, Staff } from '../lib/database';
+
+// Helper to get current branch context
+const getBranchContext = () => {
+  const { selectedBranchId, user } = useAuthStore.getState();
+  return {
+    branchId: selectedBranchId || user?.branchId || '',
+    tenantId: user?.tenantId || '',
+    isAllBranches: selectedBranchId === 'all'
+  };
+};
 
 interface TaskStats {
   total: number;
@@ -64,8 +76,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   loadTasks: async () => {
     set({ isLoading: true });
     try {
+      const { branchId, isAllBranches } = getBranchContext();
       const db = databaseService.getDatabase();
-      const tasks = await db.tasks.orderBy('createdAt').reverse().toArray();
+      let tasks = await db.tasks.orderBy('createdAt').reverse().toArray();
+      
+      // Filter by branch unless viewing all branches
+      if (!isAllBranches && branchId) {
+        tasks = tasks.filter(task => task.branchId === branchId);
+      }
+      
       set({ tasks });
     } catch (error) {
       console.error('Failed to load tasks:', error);
@@ -76,8 +95,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   loadStaff: async () => {
     try {
+      const { branchId, isAllBranches } = getBranchContext();
       const db = databaseService.getDatabase();
-      const staff = await db.staff.where('isActive').equals(1).toArray();
+      let staff = await db.staff.where('isActive').equals(1).toArray();
+      
+      // Filter by branch unless viewing all branches
+      if (!isAllBranches && branchId) {
+        staff = staff.filter(s => s.branchId === branchId);
+      }
+      
       set({ staff });
     } catch (error) {
       console.error('Failed to load staff:', error);
@@ -101,9 +127,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     try {
       const db = databaseService.getDatabase();
       const currentUser = get().currentUser;
+      const { branchId, tenantId } = getBranchContext();
       
       const task: Omit<Task, 'id'> = {
         ...taskData,
+        branchId: taskData.branchId || branchId,
+        tenantId: taskData.tenantId || tenantId,
         createdAt: new Date(),
         updatedAt: new Date(),
         createdBy: currentUser?.id || 1

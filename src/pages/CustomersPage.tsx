@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
 import { useCustomerStore } from '../store/useCustomerStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { 
-  Users, 
-  Plus, 
-  Search, 
-  Edit, 
-  Trash2, 
-  Phone, 
-  Mail, 
+import {
+  Users,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Phone,
+  Mail,
   MapPin,
   Calendar,
   DollarSign,
@@ -18,7 +19,8 @@ import {
   Tag,
   Eye,
   UserPlus,
-  Filter
+  Filter,
+  LineChart
 } from 'lucide-react';
 
 export const CustomersPage: React.FC = () => {
@@ -32,6 +34,9 @@ export const CustomersPage: React.FC = () => {
     getTopCustomers 
   } = useCustomerStore();
 
+  // Get branch context for filtering
+  const { selectedBranchId } = useAuthStore();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<number | null>(null);
@@ -43,43 +48,63 @@ export const CustomersPage: React.FC = () => {
     address: '',
     notes: '',
     tags: [] as string[],
+    type: 'regular' as 'regular' | 'vip' | 'wholesale' | 'retail',
     status: 'active' as const
   });
 
   useEffect(() => {
     loadCustomers();
-  }, [loadCustomers]);
+  }, [loadCustomers, selectedBranchId]); // Reload when branch changes
 
   const handleAddCustomer = async () => {
     if (!newCustomer.name.trim()) return;
     
-    await addCustomer({
-      ...newCustomer,
-      averageOrderValue: 0
-    });
-    setNewCustomer({
-      name: '',
-      email: '',
-      phone: '',
-      address: '',
-      notes: '',
-      tags: [],
-      status: 'active'
-    });
-    setIsAddingCustomer(false);
+    try {
+      await addCustomer({
+        ...newCustomer,
+        averageOrderValue: 0
+      });
+      // Store already calls loadCustomers() after adding
+      setNewCustomer({
+        name: '',
+        email: '',
+        phone: '',
+        address: '',
+        notes: '',
+        tags: [],
+        type: 'regular',
+        status: 'active'
+      });
+      setIsAddingCustomer(false);
+    } catch (error) {
+      console.error('Failed to add customer:', error);
+      alert('Failed to add customer. Please try again.');
+    }
   };
 
   const handleEditCustomer = async (id: number) => {
     const customer = customers.find(c => c.id === id);
     if (customer) {
-      await updateCustomer(id, { ...customer, updatedAt: new Date() });
-      setEditingCustomer(null);
+      try {
+        await updateCustomer(id, { ...customer, updatedAt: new Date() });
+        // Store already calls loadCustomers() after updating
+        setEditingCustomer(null);
+      } catch (error) {
+        console.error('Failed to update customer:', error);
+        alert('Failed to update customer. Please try again.');
+      }
     }
   };
 
   const handleDeleteCustomer = async (id: number) => {
     if (confirm('Are you sure you want to delete this customer?')) {
-      await deleteCustomer(id);
+      try {
+        await deleteCustomer(id);
+        // Store already calls loadCustomers() after deleting
+      } catch (error) {
+        console.error('Failed to delete customer:', error);
+        alert('Failed to delete customer. Please try again.');
+      }
     }
   };
 
@@ -100,7 +125,8 @@ export const CustomersPage: React.FC = () => {
   const activeCustomers = customers.filter(c => c.status === 'active').length;
   const totalRevenue = customers.reduce((sum, c) => sum + (c.totalSpent || 0), 0);
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = (amount: number | null | undefined) => {
+    if (amount === null || amount === undefined || isNaN(amount)) return '₹0';
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
       currency: 'INR',
@@ -108,13 +134,30 @@ export const CustomersPage: React.FC = () => {
     }).format(amount);
   };
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-IN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    }).format(date);
+  const formatDate = (date: Date | string | null | undefined) => {
+    if (!date) return 'N/A';
+    try {
+      const dateObj = typeof date === 'string' ? new Date(date) : date;
+      if (isNaN(dateObj.getTime())) return 'N/A';
+      return new Intl.DateTimeFormat('en-IN', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      }).format(dateObj);
+    } catch (error) {
+      return 'N/A';
+    }
   };
+
+  // Placeholder for backend-driven customer growth data
+  const customerGrowthData: [string, number][] = [
+    ['Jun 2025', 120],
+    ['Jul 2025', 140],
+    ['Aug 2025', 180],
+    ['Sep 2025', 210],
+    ['Oct 2025', 250],
+    ['Nov 2025', 300],
+  ];
 
   return (
     <div className="space-y-6">
@@ -203,31 +246,30 @@ export const CustomersPage: React.FC = () => {
         </div>
       </Card>
 
-      {/* Top Customers */}
-      {topCustomers.length > 0 && (
-        <Card className="p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Top Customers by Revenue</h2>
-          <div className="space-y-3">
-            {topCustomers.map((customer, index) => (
-              <div key={customer.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                    <span className="text-sm font-bold text-blue-600">#{index + 1}</span>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{customer.name}</p>
-                    <p className="text-sm text-gray-500">{customer.email}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-gray-900">{formatCurrency(customer.totalSpent)}</p>
-                  <p className="text-sm text-gray-500">{customer.totalOrders} orders</p>
-                </div>
+      {/* Customer Growth (Line Chart) */}
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+          <LineChart className="h-5 w-5" />
+          Customer Growth
+        </h2>
+        <div className="h-64 flex items-end gap-4 px-4">
+          {customerGrowthData.map(([month, count], index) => {
+            const maxCount = Math.max(...customerGrowthData.map(([, c]) => c));
+            const height = (count / maxCount) * 200;
+            return (
+              <div key={month} className="flex-1 flex flex-col items-center">
+                <div
+                  className="bg-green-500 rounded-t-md w-6 transition-all hover:bg-green-600"
+                  style={{ height: `${height}px`, minHeight: '20px' }}
+                  title={count.toString()}
+                />
+                <div className="mt-2 text-xs text-gray-600 text-center">{month}</div>
+                <div className="text-xs font-medium text-gray-900 text-center">{count}</div>
               </div>
-            ))}
-          </div>
-        </Card>
-      )}
+            );
+          })}
+        </div>
+      </Card>
 
       {/* Customer List */}
       <Card className="p-6">

@@ -1,18 +1,44 @@
 import { create } from 'zustand';
 import { databaseService } from '../lib/database';
+import { useAuthStore } from './useAuthStore';
+import { apiGetInsights, apiRefreshInsights, apiMarkInsightActioned } from '../lib/apiService';
 import type { AIInsight } from '../lib/database';
+
+// Helper to get current branch context
+const getBranchContext = () => {
+  const { selectedBranchId, user } = useAuthStore.getState();
+  return {
+    branchId: selectedBranchId || user?.branchId || '',
+    tenantId: user?.tenantId || '',
+    isAllBranches: selectedBranchId === 'all'
+  };
+};
+
+// Check if backend is available
+const isBackendAvailable = async (): Promise<boolean> => {
+  try {
+    const response = await fetch('/api/insights', { 
+      method: 'HEAD',
+      headers: { 'Authorization': `Bearer ${useAuthStore.getState().token}` }
+    });
+    return response.ok || response.status === 401; // 401 means endpoint exists but needs auth
+  } catch {
+    return false;
+  }
+};
 
 interface AIStore {
   insights: AIInsight[];
   loading: boolean;
   isLoading: boolean;
   isGenerating: boolean;
+  useBackendAPI: boolean;
   
   // Actions
   fetchInsights: () => Promise<void>;
   loadInsights: () => Promise<void>;
   generateInsights: () => Promise<void>;
-  markInsightAsActioned: (id: number) => Promise<void>;
+  markInsightAsActioned: (id: number | string) => Promise<void>;
   markInsightActionTaken: (id: number) => Promise<void>;
   dismissInsight: (id: number) => Promise<void>;
   
@@ -33,23 +59,52 @@ export const useAIStore = create<AIStore>((set, get) => ({
   loading: false,
   isLoading: false,
   isGenerating: false,
+  useBackendAPI: false,
 
   fetchInsights: async () => {
     set({ loading: true, isLoading: true });
     try {
+      const { branchId, isAllBranches } = getBranchContext();
+      
+      // Try backend API first
+      try {
+        const response = await apiGetInsights(isAllBranches ? undefined : branchId);
+        if (response.success && response.data) {
+          // Transform backend insights to match local format
+          const insights: AIInsight[] = response.data.map((insight: any) => ({
+            id: insight.id,
+            type: insight.type,
+            title: insight.title,
+            description: insight.description,
+            confidence: insight.confidence,
+            actionable: insight.actionable,
+            actionTaken: insight.actionTaken,
+            data: insight.data,
+            createdAt: new Date(insight.createdAt),
+            branchId: branchId
+          }));
+          set({ insights, loading: false, isLoading: false, useBackendAPI: true });
+          return;
+        }
+      } catch (apiError) {
+        console.log('Backend API not available, falling back to local database');
+      }
+      
+      // Fallback to local database
       const db = databaseService.getDatabase();
-      const insights = await db.aiInsights
-        .orderBy('createdAt')
-        .reverse()
-        .toArray();
+      let insights = await db.aiInsights.orderBy('createdAt').reverse().toArray();
+      
+      // Filter by branch unless viewing all branches
+      if (!isAllBranches && branchId) {
+        insights = insights.filter(i => i.branchId === branchId);
+      }
       
       // Filter out expired insights
       const now = new Date();
       const validInsights = insights.filter(insight => 
         !insight.expiresAt || insight.expiresAt > now
       );
-      
-      set({ insights: validInsights, loading: false, isLoading: false });
+      set({ insights: validInsights, loading: false, isLoading: false, useBackendAPI: false });
     } catch (error) {
       console.error('Failed to fetch insights:', error);
       set({ loading: false, isLoading: false });
@@ -57,40 +112,36 @@ export const useAIStore = create<AIStore>((set, get) => ({
   },
 
   loadInsights: async () => {
-    set({ isLoading: true });
-    try {
-      const db = databaseService.getDatabase();
-      const insights = await db.aiInsights
-        .orderBy('createdAt')
-        .reverse()
-        .toArray();
-      
-      // Filter out expired insights
-      const now = new Date();
-      const validInsights = insights.filter(insight => 
-        !insight.expiresAt || insight.expiresAt > now
-      );
-      
-      set({ insights: validInsights });
-    } catch (error) {
-      console.error('Failed to load insights:', error);
-    } finally {
-      set({ isLoading: false });
-    }
+    // Alias for fetchInsights
+    await get().fetchInsights();
   },
 
-  markInsightAsActioned: async (id: number) => {
+  markInsightAsActioned: async (id: number | string) => {
     try {
-      const db = databaseService.getDatabase();
-      await db.aiInsights.update(id, { 
-        actionTaken: true
-      });
+      const { useBackendAPI } = get();
       
-      set(state => ({
-        insights: state.insights.map(insight =>
-          insight.id === id ? { ...insight, actionTaken: true } : insight
-        )
-      }));
+      if (useBackendAPI && typeof id === 'string') {
+        // Use backend API
+        await apiMarkInsightActioned(id);
+        set(state => ({
+          insights: state.insights.map(insight =>
+            String(insight.id) === String(id) ? { ...insight, actionTaken: true } : insight
+          )
+        }));
+      } else {
+        // Use local database
+        const numericId = typeof id === 'number' ? id : parseInt(id);
+        const db = databaseService.getDatabase();
+        await db.aiInsights.update(numericId, { 
+          actionTaken: true
+        });
+        
+        set(state => ({
+          insights: state.insights.map(insight =>
+            insight.id === numericId ? { ...insight, actionTaken: true } : insight
+          )
+        }));
+      }
     } catch (error) {
       console.error('Failed to mark insight as actioned:', error);
     }
@@ -99,6 +150,32 @@ export const useAIStore = create<AIStore>((set, get) => ({
   generateInsights: async () => {
     set({ isGenerating: true });
     try {
+      const { branchId, isAllBranches } = getBranchContext();
+      
+      // Try backend API first
+      try {
+        const response = await apiRefreshInsights(isAllBranches ? undefined : branchId);
+        if (response.success && response.data) {
+          const insights: AIInsight[] = response.data.map((insight: any) => ({
+            id: insight.id,
+            type: insight.type,
+            title: insight.title,
+            description: insight.description,
+            confidence: insight.confidence,
+            actionable: insight.actionable,
+            actionTaken: insight.actionTaken,
+            data: insight.data,
+            createdAt: new Date(insight.createdAt),
+            branchId: branchId
+          }));
+          set({ insights, isGenerating: false, useBackendAPI: true });
+          return;
+        }
+      } catch (apiError) {
+        console.log('Backend API not available, generating locally');
+      }
+      
+      // Fallback to local generation
       await Promise.all([
         get().generateCustomerTagSuggestions(),
         get().generatePaymentDelayInsights(),

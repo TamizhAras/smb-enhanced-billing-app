@@ -1,6 +1,18 @@
 import { create } from 'zustand';
 import { db } from '../lib/database';
+import { useAuthStore } from './useAuthStore';
+// import { apiGetFeedbacks } from '../lib/apiService'; // For future backend integration
 import type { Feedback } from '../lib/database';
+
+// Helper to get current branch context
+const getBranchContext = () => {
+  const { selectedBranchId, user } = useAuthStore.getState();
+  return {
+    branchId: selectedBranchId || user?.branchId || '',
+    tenantId: user?.tenantId || '',
+    isAllBranches: selectedBranchId === 'all'
+  };
+};
 
 interface FeedbackStore {
   feedback: Feedback[]; // Changed from feedbacks to feedback
@@ -36,7 +48,14 @@ export const useFeedbackStore = create<FeedbackStore>((set, get) => ({
   loadFeedback: async () => { // Added loadFeedback alias
     set({ isLoading: true, error: null });
     try {
-      const feedbacks = await db.feedbacks.orderBy('feedbackDate').reverse().toArray();
+      const { branchId, isAllBranches } = getBranchContext();
+      let feedbacks = await db.feedbacks.orderBy('feedbackDate').reverse().toArray();
+      
+      // Filter by branch unless viewing all branches
+      if (!isAllBranches && branchId) {
+        feedbacks = feedbacks.filter(f => f.branchId === branchId);
+      }
+      
       set({ feedback: feedbacks, feedbacks, isLoading: false });
     } catch (error) {
       set({ error: 'Failed to load feedbacks', isLoading: false });
@@ -46,7 +65,14 @@ export const useFeedbackStore = create<FeedbackStore>((set, get) => ({
   loadFeedbacks: async () => {
     set({ isLoading: true, error: null });
     try {
-      const feedbacks = await db.feedbacks.orderBy('feedbackDate').reverse().toArray();
+      const { branchId, isAllBranches } = getBranchContext();
+      let feedbacks = await db.feedbacks.orderBy('feedbackDate').reverse().toArray();
+      
+      // Filter by branch unless viewing all branches
+      if (!isAllBranches && branchId) {
+        feedbacks = feedbacks.filter(f => f.branchId === branchId);
+      }
+      
       set({ feedback: feedbacks, feedbacks, isLoading: false }); // Update both properties
     } catch (error) {
       set({ error: 'Failed to load feedbacks', isLoading: false });
@@ -56,8 +82,11 @@ export const useFeedbackStore = create<FeedbackStore>((set, get) => ({
   addFeedback: async (feedbackData) => {
     set({ isLoading: true, error: null });
     try {
+      const { branchId, tenantId } = getBranchContext();
       await db.feedbacks.add({
         ...feedbackData,
+        branchId: feedbackData.branchId || branchId,
+        tenantId: feedbackData.tenantId || tenantId,
         createdAt: new Date()
       });
       await get().loadFeedbacks();

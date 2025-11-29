@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStaffStore } from '../store/useStaffStore';
+import { useAuthStore } from '../store/useAuthStore';
 import type { Staff } from '../lib/database';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -22,6 +23,10 @@ import {
 
 export default function StaffPage() {
   const { staff, addStaff, updateStaff, deleteStaff, fetchStaff } = useStaffStore();
+  
+  // Get branch context for filtering
+  const { selectedBranchId } = useAuthStore();
+  
   const [isAddingStaff, setIsAddingStaff] = useState(false);
   const [editingStaff, setEditingStaff] = useState<number | null>(null);
   const [newStaff, setNewStaff] = useState({
@@ -42,7 +47,7 @@ export default function StaffPage() {
 
   useEffect(() => {
     fetchStaff();
-  }, [fetchStaff]);
+  }, [fetchStaff, selectedBranchId]); // Reload when branch changes
 
   const getRoleIcon = (role: string) => {
     switch (role) {

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useFeedbackStore } from '../store/useFeedbackStore';
 import { useCustomerStore } from '../store/useCustomerStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -34,6 +35,9 @@ export const FeedbackPage: React.FC = () => {
   } = useFeedbackStore();
   
   const { customers, loadCustomers } = useCustomerStore();
+  
+  // Get branch context for filtering
+  const { selectedBranchId } = useAuthStore();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
@@ -52,7 +56,7 @@ export const FeedbackPage: React.FC = () => {
   useEffect(() => {
     loadFeedback();
     loadCustomers();
-  }, [loadFeedback, loadCustomers]);
+  }, [loadFeedback, loadCustomers, selectedBranchId]);
 
   const handleAddFeedback = async () => {
     if (!newFeedback.customerName.trim()) return;

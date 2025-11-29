@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, FileText, DollarSign, Calendar, X, Trash2 } from 'lucide-react';
+import { Plus, FileText, DollarSign, Calendar, X, Trash2, LineChart, BarChart3 } from 'lucide-react';
 import { useInvoiceStore } from '../store/useInvoiceStore';
 import { useCustomerStore } from '../store/useCustomerStore';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
+import { apiGetAnalyticsMonthlyRevenue, apiGetAnalyticsRevenueByBranch, apiGetAnalyticsOverdueRevenue, apiGetAnalyticsPendingRevenue } from '../lib/apiService';
 import { format } from 'date-fns';
 
 interface InvoiceItem {
@@ -37,17 +38,29 @@ export const BillingPage: React.FC = () => {
     customerAddress: '',
     issueDate: new Date().toISOString().split('T')[0],
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    items: [{ description: '', quantity: 1, rate: 0, amount: 0 }] as InvoiceItem[],
+    items: [{ description: '', quantity: 1, rate: 0, amount: 0 }],
     taxRate: 18,
     notes: '',
-    status: 'pending' as const
+    status: 'pending'
   });
 
-  useEffect(() => {
-    loadInvoices();
-    loadCustomers();
-  }, [loadInvoices, loadCustomers]);
-
+  // --- Customer Growth Chart (backend or local) ---
+  // Local fallback: monthly new customers (last 6 months)
+  const customerGrowthData = (() => {
+    const monthlyData: { [key: string]: number } = {};
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (Array.isArray(customers)) {
+      customers.forEach(customer => {
+        if (!customer.createdAt) return;
+        const date = new Date(customer.createdAt);
+        const monthKey = `${months[date.getMonth()]} ${date.getFullYear()}`;
+        monthlyData[monthKey] = (monthlyData[monthKey] || 0) + 1;
+      });
+    }
+    return Object.entries(monthlyData)
+      .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
+      .slice(-6);
+  })();
   const generateInvoiceNumber = () => {
     const date = new Date();
     const year = date.getFullYear();
@@ -126,7 +139,7 @@ export const BillingPage: React.FC = () => {
       taxRate: newInvoice.taxRate,
       taxAmount: calculateTaxAmount(),
       totalAmount: calculateTotal(),
-      status: newInvoice.status,
+      status: newInvoice.status as 'draft' | 'pending' | 'paid' | 'overdue' | 'cancelled' | 'partial',
       notes: newInvoice.notes
     };
 
@@ -150,8 +163,34 @@ export const BillingPage: React.FC = () => {
     setIsCreatingInvoice(false);
   };
 
-  const totalRevenue = getTotalRevenue();
-  const pendingPayments = getPendingPayments();
+  // --- Backend analytics for overdue/pending KPIs ---
+  const [apiOverdueRevenue, setApiOverdueRevenue] = useState<number | null>(null);
+  const [apiPendingRevenue, setApiPendingRevenue] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchKPIAnalytics = async () => {
+      try {
+        const tenantId = localStorage.getItem('tenantId');
+        if (tenantId) {
+          const overdueData = await apiGetAnalyticsOverdueRevenue(tenantId);
+          const pendingData = await apiGetAnalyticsPendingRevenue(tenantId);
+          setApiOverdueRevenue(overdueData.overdueRevenue || overdueData.overdue_revenue || null);
+          setApiPendingRevenue(pendingData.pendingRevenue || pendingData.pending_revenue || null);
+        }
+      } catch (err) {
+        // fallback: do nothing, use local
+      }
+    };
+    fetchKPIAnalytics();
+  }, []);
+
+  const pendingPayments = apiPendingRevenue !== null
+    ? apiPendingRevenue
+    : getPendingPayments();
+
+  const overduePayments = apiOverdueRevenue !== null
+    ? apiOverdueRevenue
+    : invoices.filter(inv => inv.status === 'overdue').reduce((sum, inv) => sum + inv.totalAmount, 0);
   const recentInvoices = getRecentInvoices(5);
 
   if (isLoading) {
@@ -165,6 +204,86 @@ export const BillingPage: React.FC = () => {
     );
   }
 
+  // --- Backend analytics integration (branch performance) ---
+  const [apiRevenueByBranch, setApiRevenueByBranch] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchBranchAnalytics = async () => {
+      try {
+        const tenantId = localStorage.getItem('tenantId');
+        if (tenantId) {
+          const revenueData = await apiGetAnalyticsRevenueByBranch(tenantId);
+          setApiRevenueByBranch(revenueData);
+        }
+      } catch (err) {
+        // fallback: do nothing, use local
+      }
+    };
+    fetchBranchAnalytics();
+  }, []);
+
+  // Branch performance: prefer backend, fallback to local
+  const branchPerformance = apiRevenueByBranch && apiRevenueByBranch.length > 0
+    ? apiRevenueByBranch.map((row: any) => ({
+        name: row.branchName || row.name,
+        totalRevenue: row.totalRevenue,
+        invoiceCount: row.invoiceCount
+      }))
+    : (() => {
+      // Group local invoices by branch
+      const branchMap: { [key: string]: { name: string, totalRevenue: number, invoiceCount: number } } = {};
+      invoices.filter(inv => inv.status === 'paid').forEach(inv => {
+        // Use branchName if available, else branch_id, else Unknown
+        let branch = 'Unknown';
+  if ('branchName' in inv && inv.branchName) branch = String(inv.branchName);
+        else if ('branch_id' in inv && inv.branch_id) branch = String(inv.branch_id);
+        if (!branchMap[branch]) branchMap[branch] = { name: branch, totalRevenue: 0, invoiceCount: 0 };
+        branchMap[branch].totalRevenue += inv.totalAmount;
+        branchMap[branch].invoiceCount += 1;
+      });
+      return Object.values(branchMap);
+    })();
+  // ---
+  const [apiMonthlyRevenue, setApiMonthlyRevenue] = useState<any[]>([]);
+  const [isAnalyticsLoading, setIsAnalyticsLoading] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      setIsAnalyticsLoading(true);
+      setAnalyticsError(null);
+      try {
+        const tenantId = localStorage.getItem('tenantId');
+        if (tenantId) {
+          const monthlyData = await apiGetAnalyticsMonthlyRevenue(tenantId);
+          setApiMonthlyRevenue(monthlyData);
+        }
+      } catch (err) {
+        setAnalyticsError('Failed to load analytics from backend. Showing local data.');
+      } finally {
+        setIsAnalyticsLoading(false);
+      }
+    };
+    fetchAnalytics();
+  }, []);
+
+  // Monthly revenue: prefer backend, fallback to local
+  const monthlyRevenue = apiMonthlyRevenue && apiMonthlyRevenue.length > 0
+    ? apiMonthlyRevenue.map((row: any) => [row.month, row.totalRevenue])
+    : (() => {
+      const monthlyData: { [key: string]: number } = {};
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      invoices.filter(inv => inv.status === 'paid').forEach(invoice => {
+        const date = new Date(invoice.issueDate);
+        const monthKey = `${months[date.getMonth()]} ${date.getFullYear()}`;
+        monthlyData[monthKey] = (monthlyData[monthKey] || 0) + invoice.totalAmount;
+      });
+      return Object.entries(monthlyData)
+        .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
+        .slice(-6);
+    })();
+
+  // --- UI ---
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -175,6 +294,67 @@ export const BillingPage: React.FC = () => {
         </Button>
       </div>
 
+      {/* Branch Performance (Bar Chart) */}
+      <Card className="p-6 mb-8 shadow-lg bg-gradient-to-br from-indigo-50 to-indigo-100 border border-indigo-200">
+        <h2 className="text-xl font-bold text-indigo-900 mb-6 flex items-center gap-2 tracking-tight">
+          <BarChart3 className="h-6 w-6 text-indigo-500" />
+          Branch Performance
+        </h2>
+        <div className="h-64 flex items-end gap-6 px-6">
+          {branchPerformance.map((branch, index) => {
+            const maxRevenue = Math.max(...branchPerformance.map(b => b.totalRevenue));
+            const height = (branch.totalRevenue / maxRevenue) * 200;
+            return (
+              <div key={branch.name} className="flex-1 flex flex-col items-center">
+                <div
+                  className="bg-gradient-to-t from-indigo-400 to-indigo-300 rounded-t-lg w-10 shadow-md hover:from-indigo-500 hover:to-indigo-400 transition-all"
+                  style={{ height: `${height}px`, minHeight: '20px' }}
+                  title={branch.totalRevenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                ></div>
+                <div className="mt-2 text-xs text-indigo-700 text-center font-medium">{branch.name}</div>
+                <div className="text-xs font-bold text-indigo-900 text-center">
+                  ₹{branch.totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                </div>
+                <div className="text-xs text-indigo-500 text-center">{branch.invoiceCount} invoices</div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+      {/* Monthly Revenue Trend (Line Chart) */}
+      <Card className="p-6 mb-8 shadow-lg bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200">
+        <h2 className="text-xl font-bold text-blue-900 mb-6 flex items-center gap-2 tracking-tight">
+          <LineChart className="h-6 w-6 text-blue-500" />
+          Monthly Revenue Trend
+        </h2>
+        {isAnalyticsLoading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <p className="ml-2 text-gray-500">Loading analytics...</p>
+          </div>
+        ) : (
+          <div className="h-64 flex items-end gap-6 px-6">
+            {monthlyRevenue.map(([month, revenue], index) => {
+              const maxRevenue = Math.max(...monthlyRevenue.map(([, rev]) => rev));
+              const height = (revenue / maxRevenue) * 200;
+              return (
+                <div key={month} className="flex-1 flex flex-col items-center">
+                  <div
+                    className="bg-gradient-to-t from-blue-400 to-blue-300 rounded-t-lg w-8 shadow-md hover:from-blue-500 hover:to-blue-400 transition-all"
+                    style={{ height: `${height}px`, minHeight: '20px' }}
+                    title={revenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR' })}
+                  ></div>
+                  <div className="mt-2 text-xs text-blue-700 text-center font-medium">{month}</div>
+                  <div className="text-xs font-bold text-blue-900 text-center">
+                    ₹{revenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
         <Card>
@@ -184,7 +364,10 @@ export const BillingPage: React.FC = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-              <p className="text-2xl font-bold text-gray-900">₹{totalRevenue.toFixed(2)}</p>
+              <p className="text-2xl font-bold text-gray-900">₹{(apiRevenueByBranch && apiRevenueByBranch.length > 0
+                ? apiRevenueByBranch.reduce((sum, b) => sum + (b.totalRevenue || 0), 0)
+                : getTotalRevenue()
+              ).toFixed(2)}</p>
             </div>
           </div>
         </Card>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { db } from '../lib/database';
+import { useAuthStore } from './useAuthStore';
 import type { 
   Invoice, 
   Payment, 
@@ -9,6 +9,50 @@ import type {
   Customer 
 } from '../lib/database';
 import jsPDF from 'jspdf';
+
+// Helper function to get auth headers
+function getAuthHeaders(): HeadersInit {
+  const { token } = useAuthStore.getState();
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+// Generic API fetch wrapper
+async function apiFetch<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(`/api${endpoint}`, {
+    ...options,
+    headers: {
+      ...getAuthHeaders(),
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Request failed' }));
+    throw new Error(error.message || `API Error: ${response.status}`);
+  }
+
+  const result = await response.json();
+  return result.data !== undefined ? result.data : result;
+}
+
+// Helper to get current branch context
+const getBranchContext = () => {
+  const { selectedBranchId, user } = useAuthStore.getState();
+  return {
+    branchId: selectedBranchId || user?.branchId || '',
+    tenantId: user?.tenantId || '',
+    isAllBranches: selectedBranchId === 'all'
+  };
+};
 
 interface InvoiceStore {
   // State
@@ -123,11 +167,12 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   loadInvoices: async () => {
     set({ isLoading: true });
     try {
-      const invoices = await db.invoices.orderBy('createdAt').reverse().toArray();
+      const invoices = await apiFetch<Invoice[]>('/invoices');
+      
       // Calculate outstanding amounts
       const invoicesWithBalance = invoices.map(invoice => ({
         ...invoice,
-        outstandingAmount: invoice.totalAmount - (invoice.paidAmount || 0)
+        outstandingAmount: invoice.outstandingAmount ?? (invoice.totalAmount - (invoice.paidAmount || 0))
       }));
       set({ invoices: invoicesWithBalance });
     } catch (error) {
@@ -139,7 +184,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   loadPayments: async () => {
     try {
-      const payments = await db.payments.orderBy('paymentDate').reverse().toArray();
+      const payments = await apiFetch<Payment[]>('/invoices/payments/all');
       set({ payments });
     } catch (error) {
       console.error('Failed to load payments:', error);
@@ -148,8 +193,9 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   loadCompanySettings: async () => {
     try {
-      const settings = await db.companySettings.toCollection().first();
-      set({ companySettings: settings || null });
+      // TODO: Implement company settings API endpoint
+      console.warn('Company settings API not yet implemented');
+      set({ companySettings: null });
     } catch (error) {
       console.error('Failed to load company settings:', error);
     }
@@ -157,7 +203,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   loadTaxRates: async () => {
     try {
-      const taxRates = await db.taxRates.orderBy('name').toArray();
+      const taxRates = await apiFetch<TaxRate[]>('/invoices/meta/tax-rates');
       set({ taxRates });
     } catch (error) {
       console.error('Failed to load tax rates:', error);
@@ -166,7 +212,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   loadInvoiceTemplates: async () => {
     try {
-      const templates = await db.invoiceTemplates.orderBy('name').toArray();
+      const templates = await apiFetch<InvoiceTemplate[]>('/invoices/meta/templates');
       set({ invoiceTemplates: templates });
     } catch (error) {
       console.error('Failed to load invoice templates:', error);
@@ -176,20 +222,12 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // Invoice Management
   addInvoice: async (invoiceData) => {
     try {
-      const { companySettings } = get();
-      const newInvoice = {
-        ...invoiceData,
-        currency: invoiceData.currency || companySettings?.defaultCurrency || 'INR',
-        paidAmount: 0,
-        outstandingAmount: invoiceData.totalAmount,
-        remindersSent: 0,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-      
-      const id = await db.invoices.add(newInvoice);
+      const result = await apiFetch<Invoice>('/invoices', {
+        method: 'POST',
+        body: JSON.stringify(invoiceData)
+      });
       await get().loadInvoices();
-      return id as number;
+      return result.id as any;
     } catch (error) {
       console.error('Failed to add invoice:', error);
       throw error;
@@ -198,7 +236,10 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   updateInvoice: async (id, updates) => {
     try {
-      await db.invoices.update(id, { ...updates, updatedAt: new Date() });
+      await apiFetch(`/invoices/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
       await get().loadInvoices();
     } catch (error) {
       console.error('Failed to update invoice:', error);
@@ -208,9 +249,9 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   deleteInvoice: async (id) => {
     try {
-      await db.invoices.delete(id);
-      // Also delete related payments
-      await db.payments.where('invoiceId').equals(id).delete();
+      await apiFetch(`/invoices/${id}`, {
+        method: 'DELETE'
+      });
       await get().loadInvoices();
       await get().loadPayments();
     } catch (error) {
@@ -221,7 +262,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   duplicateInvoice: async (id) => {
     try {
-      const invoice = await db.invoices.get(id);
+      const invoice = await apiFetch<Invoice>(`/invoices/${id}`);
       if (!invoice) throw new Error('Invoice not found');
       
       const { id: _, createdAt, updatedAt, invoiceNumber, ...invoiceData } = invoice;
@@ -243,35 +284,28 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // Status Management
   markAsPaid: async (id, paymentData) => {
     try {
-      const invoice = await db.invoices.get(id);
-      if (!invoice) throw new Error('Invoice not found');
-      
-      const paymentAmount = paymentData?.amount || invoice.outstandingAmount;
-      const newPaidAmount = (invoice.paidAmount || 0) + paymentAmount;
-      const newOutstandingAmount = invoice.totalAmount - newPaidAmount;
-      
-      // Update invoice status
-      const newStatus = newOutstandingAmount <= 0 ? 'paid' : 'partial';
-      await get().updateInvoice(id, {
-        status: newStatus,
-        paidAmount: newPaidAmount,
-        outstandingAmount: newOutstandingAmount
-      });
-      
-      // Add payment record
+      // Add payment via API which auto-updates invoice status
       if (paymentData) {
-        await get().addPayment({
-          invoiceId: id,
-          invoiceNumber: invoice.invoiceNumber,
-          customerId: invoice.customerId,
-          customerName: invoice.customerName,
-          amount: paymentAmount,
-          method: paymentData.method || 'cash',
-          reference: paymentData.reference,
-          notes: paymentData.notes,
-          paymentDate: new Date()
+        // Backend API will auto-populate invoiceNumber, customerId, customerName from invoice
+        await apiFetch(`/invoices/${id}/payments`, {
+          method: 'POST',
+          body: JSON.stringify({
+            amount: paymentData.amount,
+            method: paymentData.method || 'cash',
+            reference: paymentData.reference,
+            notes: paymentData.notes,
+            paymentDate: new Date()
+          })
+        });
+      } else {
+        // Just update status
+        await apiFetch(`/invoices/${id}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'paid' })
         });
       }
+      await get().loadInvoices();
+      await get().loadPayments();
     } catch (error) {
       console.error('Failed to mark invoice as paid:', error);
       throw error;
@@ -299,24 +333,12 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // Payment Management
   addPayment: async (paymentData) => {
     try {
-      await db.payments.add({ ...paymentData, createdAt: new Date() });
+      await apiFetch(`/invoices/${paymentData.invoiceId}/payments`, {
+        method: 'POST',
+        body: JSON.stringify(paymentData)
+      });
       await get().loadPayments();
-      
-      // Update invoice status if this payment affects it
-      if (paymentData.invoiceId) {
-        const invoice = await db.invoices.get(paymentData.invoiceId);
-        if (invoice) {
-          const newPaidAmount = (invoice.paidAmount || 0) + paymentData.amount;
-          const newOutstandingAmount = invoice.totalAmount - newPaidAmount;
-          const newStatus = newOutstandingAmount <= 0 ? 'paid' : 'partial';
-          
-          await get().updateInvoice(paymentData.invoiceId, {
-            paidAmount: newPaidAmount,
-            outstandingAmount: newOutstandingAmount,
-            status: newStatus
-          });
-        }
-      }
+      await get().loadInvoices();
     } catch (error) {
       console.error('Failed to add payment:', error);
       throw error;
@@ -325,7 +347,10 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   updatePayment: async (id, updates) => {
     try {
-      await db.payments.update(id, updates);
+      await apiFetch(`/invoices/payments/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
       await get().loadPayments();
     } catch (error) {
       console.error('Failed to update payment:', error);
@@ -335,26 +360,11 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   deletePayment: async (id) => {
     try {
-      const payment = await db.payments.get(id);
-      if (payment) {
-        await db.payments.delete(id);
-        
-        // Update related invoice
-        const invoice = await db.invoices.get(payment.invoiceId);
-        if (invoice) {
-          const newPaidAmount = (invoice.paidAmount || 0) - payment.amount;
-          const newOutstandingAmount = invoice.totalAmount - newPaidAmount;
-          const newStatus = newOutstandingAmount <= 0 ? 'paid' : 
-                           newPaidAmount > 0 ? 'partial' : 'pending';
-          
-          await get().updateInvoice(payment.invoiceId, {
-            paidAmount: Math.max(0, newPaidAmount),
-            outstandingAmount: newOutstandingAmount,
-            status: newStatus
-          });
-        }
-      }
+      await apiFetch(`/invoices/payments/${id}`, {
+        method: 'DELETE'
+      });
       await get().loadPayments();
+      await get().loadInvoices();
     } catch (error) {
       console.error('Failed to delete payment:', error);
       throw error;
@@ -364,7 +374,8 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // Recurring Invoices
   createRecurringInvoice: async (parentId) => {
     try {
-      const parentInvoice = await db.invoices.get(parentId);
+      const parentInvoice = await apiFetch<Invoice>(`/invoices/${parentId}`);
+      
       if (!parentInvoice || !parentInvoice.isRecurring) {
         throw new Error('Parent invoice not found or not recurring');
       }
@@ -407,15 +418,12 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   processRecurringInvoices: async () => {
     try {
-      const recurringInvoices = await db.invoices
-        .where('isRecurring')
-        .equals(1)
-        .toArray();
+      const recurringInvoices = await apiFetch<Invoice[]>('/invoices/alerts/recurring');
       
       const today = new Date();
       
       for (const invoice of recurringInvoices) {
-        if (invoice.recurringEndDate && today > invoice.recurringEndDate) {
+        if (invoice.recurringEndDate && today > new Date(invoice.recurringEndDate)) {
           continue; // Skip expired recurring invoices
         }
         
@@ -433,7 +441,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // PDF Generation
   generateInvoicePDF: async (invoiceId, template = 'modern') => {
     try {
-      const invoice = await db.invoices.get(invoiceId);
+      const invoice = await apiFetch<Invoice>(`/invoices/${invoiceId}`);
       if (!invoice) throw new Error('Invoice not found');
       
       const { companySettings } = get();
@@ -494,7 +502,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   downloadInvoicePDF: async (invoiceId, template) => {
     try {
-      const invoice = await db.invoices.get(invoiceId);
+      const invoice = await apiFetch<Invoice>(`/invoices/${invoiceId}`);
       if (!invoice) throw new Error('Invoice not found');
       
       const pdfBlob = await get().generateInvoicePDF(invoiceId, template);
@@ -513,19 +521,13 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // Settings Management
   updateCompanySettings: async (settings) => {
     try {
-      const existingSettings = await db.companySettings.toCollection().first();
-      if (existingSettings) {
-        await db.companySettings.update(existingSettings.id!, { 
-          ...settings, 
-          updatedAt: new Date() 
-        });
-      } else {
-        await db.companySettings.add({ 
-          ...settings, 
-          updatedAt: new Date() 
-        } as CompanySettings);
-      }
-      await get().loadCompanySettings();
+      // TODO: API endpoint for company settings not yet implemented
+      console.warn('Company settings API not yet implemented');
+      // await apiFetch('/company/settings', {
+      //   method: 'PUT',
+      //   body: JSON.stringify(settings)
+      // });
+      // await get().loadCompanySettings();
     } catch (error) {
       console.error('Failed to update company settings:', error);
       throw error;
@@ -534,25 +536,13 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   updateCommunicationSettings: async (communicationSettings) => {
     try {
-      const existingSettings = await db.companySettings.toCollection().first();
-      if (existingSettings) {
-        await db.companySettings.update(existingSettings.id!, { 
-          communicationSettings,
-          updatedAt: new Date() 
-        });
-      } else {
-        // Create default company settings with communication settings
-        await db.companySettings.add({
-          companyName: 'Your Company',
-          defaultCurrency: 'INR',
-          defaultTaxRate: 18,
-          invoicePrefix: 'INV',
-          invoiceStartNumber: 1,
-          communicationSettings,
-          updatedAt: new Date()
-        } as CompanySettings);
-      }
-      await get().loadCompanySettings();
+      // TODO: API endpoint for communication settings not yet implemented
+      console.warn('Communication settings API not yet implemented');
+      // await apiFetch('/company/settings/communication', {
+      //   method: 'PUT',
+      //   body: JSON.stringify(communicationSettings)
+      // });
+      // await get().loadCompanySettings();
     } catch (error) {
       console.error('Failed to update communication settings:', error);
       throw error;
@@ -561,7 +551,10 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   addTaxRate: async (taxRateData) => {
     try {
-      await db.taxRates.add({ ...taxRateData, createdAt: new Date() });
+      await apiFetch('/invoices/meta/tax-rates', {
+        method: 'POST',
+        body: JSON.stringify(taxRateData)
+      });
       await get().loadTaxRates();
     } catch (error) {
       console.error('Failed to add tax rate:', error);
@@ -571,7 +564,10 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   updateTaxRate: async (id, updates) => {
     try {
-      await db.taxRates.update(id, updates);
+      await apiFetch(`/invoices/meta/tax-rates/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
       await get().loadTaxRates();
     } catch (error) {
       console.error('Failed to update tax rate:', error);
@@ -581,7 +577,9 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   deleteTaxRate: async (id) => {
     try {
-      await db.taxRates.delete(id);
+      await apiFetch(`/invoices/meta/tax-rates/${id}`, {
+        method: 'DELETE'
+      });
       await get().loadTaxRates();
     } catch (error) {
       console.error('Failed to delete tax rate:', error);
@@ -592,7 +590,10 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // Template Management
   addInvoiceTemplate: async (templateData) => {
     try {
-      await db.invoiceTemplates.add({ ...templateData, createdAt: new Date() });
+      await apiFetch('/invoices/meta/templates', {
+        method: 'POST',
+        body: JSON.stringify(templateData)
+      });
       await get().loadInvoiceTemplates();
     } catch (error) {
       console.error('Failed to add invoice template:', error);
@@ -602,7 +603,10 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   updateInvoiceTemplate: async (id, updates) => {
     try {
-      await db.invoiceTemplates.update(id, updates);
+      await apiFetch(`/invoices/meta/templates/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates)
+      });
       await get().loadInvoiceTemplates();
     } catch (error) {
       console.error('Failed to update invoice template:', error);
@@ -612,7 +616,9 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
 
   deleteInvoiceTemplate: async (id) => {
     try {
-      await db.invoiceTemplates.delete(id);
+      await apiFetch(`/invoices/meta/templates/${id}`, {
+        method: 'DELETE'
+      });
       await get().loadInvoiceTemplates();
     } catch (error) {
       console.error('Failed to delete invoice template:', error);
@@ -799,7 +805,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // Email Integration (placeholder)
   sendInvoiceEmail: async (invoiceId, email) => {
     try {
-      const invoice = await db.invoices.get(invoiceId);
+      const invoice = await apiFetch<Invoice>(`/invoices/${invoiceId}`);
       if (!invoice) throw new Error('Invoice not found');
 
       // Generate PDF for email attachment (would be base64 encoded)
@@ -859,7 +865,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // WhatsApp Integration (Manual Send)
   sendInvoiceWhatsAppManual: async (invoiceId: number, phone: string) => {
     try {
-      const invoice = await db.invoices.get(invoiceId);
+      const invoice = await apiFetch<Invoice>(`/invoices/${invoiceId}`);
       if (!invoice) throw new Error('Invoice not found');
 
       // Format phone number (remove any non-digits and add country code if needed)
@@ -913,7 +919,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // WhatsApp Business API Integration (Automatic Send - Requires Setup)
   sendInvoiceWhatsAppAuto: async (invoiceId: number, phone: string) => {
     try {
-      const invoice = await db.invoices.get(invoiceId);
+      const invoice = await apiFetch<Invoice>(`/invoices/${invoiceId}`);
       if (!invoice) throw new Error('Invoice not found');
 
       // Format phone number
@@ -966,7 +972,7 @@ export const useEnhancedInvoiceStore = create<InvoiceStore>((set, get) => ({
   // SMS Integration (bonus)
   sendInvoiceSMS: async (invoiceId: number, phone: string) => {
     try {
-      const invoice = await db.invoices.get(invoiceId);
+      const invoice = await apiFetch<Invoice>(`/invoices/${invoiceId}`);
       if (!invoice) throw new Error('Invoice not found');
 
       // Create SMS message (shorter version)

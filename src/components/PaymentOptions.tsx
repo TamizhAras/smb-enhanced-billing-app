@@ -21,6 +21,22 @@ interface PaymentOptionsProps {
   customerEmail?: string;
   customerPhone?: string;
   description: string;
+  paymentSettings?: {
+    businessName: string;
+    businessUPI: string;
+    businessEmail: string;
+    businessPhone: string;
+    bankAccountNumber: string;
+    bankIFSC: string;
+    bankName: string;
+    accountHolderName: string;
+    razorpayKeyId: string;
+    razorpayKeySecret: string;
+    enableUPI: boolean;
+    enableRazorpay: boolean;
+    enablePayPal: boolean;
+    enableBankTransfer: boolean;
+  };
   onPaymentMethodSelect?: (method: string, details: any) => void;
 }
 
@@ -33,6 +49,7 @@ export const PaymentOptions: React.FC<PaymentOptionsProps> = ({
   customerEmail,
   customerPhone,
   description,
+  paymentSettings,
   onPaymentMethodSelect
 }) => {
   const [selectedMethod, setSelectedMethod] = useState<string>('');
@@ -58,20 +75,26 @@ export const PaymentOptions: React.FC<PaymentOptionsProps> = ({
     if (onPaymentMethodSelect) {
       let details: any = {};
 
+      // Use business UPI from settings or fallback to default
+      const businessUPI = paymentSettings?.businessUPI || 'business@paytm';
+      const businessName = paymentSettings?.businessName || 'Your Business';
+
       switch (methodId) {
         case 'upi':
           details = {
-            link: generateUPILink(amount, invoiceNumber),
+            link: generateUPILink(amount, invoiceNumber, businessUPI, businessName),
+            upiId: businessUPI,
             instructions: 'Click the link below or copy the UPI ID to make payment'
           };
           break;
         case 'qrcode':
           setIsGeneratingQR(true);
           try {
-            const qrImage = await generateUPIQRCode(amount, invoiceNumber);
+            const qrImage = await generateUPIQRCode(amount, invoiceNumber, businessUPI, businessName);
             setQrCodeImage(qrImage);
             details = {
               qrCode: qrImage,
+              upiId: businessUPI,
               instructions: 'Scan this QR code with any UPI app to make payment'
             };
           } catch (error) {
@@ -121,6 +144,31 @@ export const PaymentOptions: React.FC<PaymentOptionsProps> = ({
     }
   };
 
+  // Filter payment methods based on settings
+  const getEnabledPaymentMethods = () => {
+    if (!paymentSettings) {
+      return paymentMethods; // Show all if no settings
+    }
+
+    return paymentMethods.filter(method => {
+      switch (method.id) {
+        case 'upi':
+        case 'qrcode':
+          return paymentSettings.enableUPI;
+        case 'razorpay':
+          return paymentSettings.enableRazorpay;
+        case 'paypal':
+          return paymentSettings.enablePayPal;
+        case 'bank':
+          return paymentSettings.enableBankTransfer;
+        default:
+          return true;
+      }
+    });
+  };
+
+  const enabledMethods = getEnabledPaymentMethods();
+
   return (
     <Card className="p-6">
       <div className="space-y-6">
@@ -136,27 +184,44 @@ export const PaymentOptions: React.FC<PaymentOptionsProps> = ({
         </div>
 
         {/* Payment Method Selection */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {paymentMethods.map((method) => (
-            <button
-              key={method.id}
-              onClick={() => handleMethodSelect(method.id)}
-              className={`p-4 rounded-lg border-2 transition-all duration-200 text-left hover:shadow-md ${
-                selectedMethod === method.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <span className="text-2xl">{method.icon}</span>
-                <div>
-                  <div className="font-medium text-gray-900">{method.name}</div>
-                  <div className="text-sm text-gray-500">{method.description}</div>
+        {enabledMethods.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {enabledMethods.map((method) => (
+              <button
+                key={method.id}
+                onClick={() => handleMethodSelect(method.id)}
+                className={`p-4 rounded-lg border-2 transition-all duration-200 text-left hover:shadow-md ${
+                  selectedMethod === method.id
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center space-x-3">
+                  <span className="text-2xl">{method.icon}</span>
+                  <div>
+                    <div className="font-medium text-gray-900">{method.name}</div>
+                    <div className="text-sm text-gray-500">{method.description}</div>
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
-        </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <div className="text-gray-400 text-4xl mb-4">💳</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Payment Methods Available</h3>
+            <p className="text-gray-600 mb-4">
+              Payment methods need to be enabled in Settings before customers can pay online.
+            </p>
+            <Button
+              onClick={() => window.location.hash = '#settings'}
+              variant="outline"
+              className="text-blue-600 border-blue-600 hover:bg-blue-50"
+            >
+              Go to Settings
+            </Button>
+          </div>
+        )}
 
         {/* Payment Details */}
         {showDetails && (
@@ -165,16 +230,37 @@ export const PaymentOptions: React.FC<PaymentOptionsProps> = ({
               <div className="space-y-4">
                 <h4 className="font-medium text-gray-900">UPI Payment</h4>
                 <p className="text-sm text-gray-600">Click the button below to open your UPI app:</p>
+                
+                {/* Show business UPI ID */}
+                {paymentSettings?.businessUPI && (
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-sm text-gray-700">
+                      <span className="font-medium">Pay to:</span> {paymentSettings.businessUPI}
+                    </p>
+                    <p className="text-sm text-gray-700">
+                      <span className="font-medium">Business:</span> {paymentSettings.businessName}
+                    </p>
+                  </div>
+                )}
+                
                 <div className="flex space-x-3">
                   <Button
-                    onClick={() => window.open(generateUPILink(amount, invoiceNumber), '_blank')}
+                    onClick={() => {
+                      const businessUPI = paymentSettings?.businessUPI || 'business@paytm';
+                      const businessName = paymentSettings?.businessName || 'Your Business';
+                      window.open(generateUPILink(amount, invoiceNumber, businessUPI, businessName), '_blank');
+                    }}
                     className="bg-green-600 hover:bg-green-700"
                   >
                     📱 Pay with UPI
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => copyToClipboard(generateUPILink(amount, invoiceNumber))}
+                    onClick={() => {
+                      const businessUPI = paymentSettings?.businessUPI || 'business@paytm';
+                      const businessName = paymentSettings?.businessName || 'Your Business';
+                      copyToClipboard(generateUPILink(amount, invoiceNumber, businessUPI, businessName));
+                    }}
                   >
                     📋 Copy Link
                   </Button>
