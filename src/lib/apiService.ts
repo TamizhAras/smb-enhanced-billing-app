@@ -3,7 +3,7 @@
 
 import { useAuthStore } from '../store/useAuthStore';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'https://smb-enhanced-billing-app.onrender.com/api';
 
 // Helper function to get auth headers
 function getAuthHeaders(): HeadersInit {
