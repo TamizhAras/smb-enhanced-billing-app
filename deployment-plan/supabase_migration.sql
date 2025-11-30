@@ -354,9 +354,9 @@ ALTER TABLE invoice_templates ENABLE ROW LEVEL SECURITY;
 -- CREATE RLS POLICIES - TENANT ISOLATION
 -- ============================================================================
 
--- Helper function to get current tenant_id from JWT token
+-- Helper function to get current tenant_id from JWT token or app setting
 -- This assumes your backend sets tenant_id in the JWT claims
-CREATE OR REPLACE FUNCTION auth.tenant_id() 
+CREATE OR REPLACE FUNCTION public.get_tenant_id() 
 RETURNS UUID AS $$
   SELECT COALESCE(
     current_setting('request.jwt.claims', true)::json->>'tenant_id',
@@ -372,13 +372,13 @@ $$ LANGUAGE SQL STABLE;
 CREATE POLICY "Users can view their own tenant"
   ON tenants
   FOR SELECT
-  USING (id = auth.tenant_id());
+  USING (id = public.get_tenant_id());
 
 -- Users can update their own tenant
 CREATE POLICY "Users can update their own tenant"
   ON tenants
   FOR UPDATE
-  USING (id = auth.tenant_id());
+  USING (id = public.get_tenant_id());
 
 -- ============================================================================
 -- BRANCHES TABLE POLICIES
@@ -388,25 +388,25 @@ CREATE POLICY "Users can update their own tenant"
 CREATE POLICY "Users can view branches in their tenant"
   ON branches
   FOR SELECT
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can insert branches in their tenant
 CREATE POLICY "Users can insert branches in their tenant"
   ON branches
   FOR INSERT
-  WITH CHECK (tenant_id = auth.tenant_id());
+  WITH CHECK (tenant_id = public.get_tenant_id());
 
 -- Users can update branches in their tenant
 CREATE POLICY "Users can update branches in their tenant"
   ON branches
   FOR UPDATE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can delete branches in their tenant
 CREATE POLICY "Users can delete branches in their tenant"
   ON branches
   FOR DELETE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- ============================================================================
 -- USERS TABLE POLICIES
@@ -416,14 +416,14 @@ CREATE POLICY "Users can delete branches in their tenant"
 CREATE POLICY "Users can view users in their tenant"
   ON users
   FOR SELECT
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can insert new users in their tenant (admins only)
 CREATE POLICY "Admins can insert users in their tenant"
   ON users
   FOR INSERT
   WITH CHECK (
-    tenant_id = auth.tenant_id() 
+    tenant_id = public.get_tenant_id() 
     AND (
       SELECT role FROM users 
       WHERE id = (current_setting('request.jwt.claims', true)::json->>'user_id')::uuid
@@ -434,7 +434,7 @@ CREATE POLICY "Admins can insert users in their tenant"
 CREATE POLICY "Users can update users in their tenant"
   ON users
   FOR UPDATE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- ============================================================================
 -- CUSTOMERS TABLE POLICIES
@@ -444,25 +444,25 @@ CREATE POLICY "Users can update users in their tenant"
 CREATE POLICY "Users can view customers in their tenant"
   ON customers
   FOR SELECT
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can insert customers in their tenant
 CREATE POLICY "Users can insert customers in their tenant"
   ON customers
   FOR INSERT
-  WITH CHECK (tenant_id = auth.tenant_id());
+  WITH CHECK (tenant_id = public.get_tenant_id());
 
 -- Users can update customers in their tenant
 CREATE POLICY "Users can update customers in their tenant"
   ON customers
   FOR UPDATE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can delete customers in their tenant
 CREATE POLICY "Users can delete customers in their tenant"
   ON customers
   FOR DELETE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- ============================================================================
 -- INVOICES TABLE POLICIES
@@ -472,26 +472,26 @@ CREATE POLICY "Users can delete customers in their tenant"
 CREATE POLICY "Users can view invoices in their tenant"
   ON invoices
   FOR SELECT
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can insert invoices in their tenant
 CREATE POLICY "Users can insert invoices in their tenant"
   ON invoices
   FOR INSERT
-  WITH CHECK (tenant_id = auth.tenant_id());
+  WITH CHECK (tenant_id = public.get_tenant_id());
 
 -- Users can update invoices in their tenant
 CREATE POLICY "Users can update invoices in their tenant"
   ON invoices
   FOR UPDATE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can delete invoices in their tenant (admins only)
 CREATE POLICY "Admins can delete invoices in their tenant"
   ON invoices
   FOR DELETE
   USING (
-    tenant_id = auth.tenant_id() 
+    tenant_id = public.get_tenant_id() 
     AND (
       SELECT role FROM users 
       WHERE id = (current_setting('request.jwt.claims', true)::json->>'user_id')::uuid
@@ -506,25 +506,25 @@ CREATE POLICY "Admins can delete invoices in their tenant"
 CREATE POLICY "Users can view payments in their tenant"
   ON payments
   FOR SELECT
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can insert payments in their tenant
 CREATE POLICY "Users can insert payments in their tenant"
   ON payments
   FOR INSERT
-  WITH CHECK (tenant_id = auth.tenant_id());
+  WITH CHECK (tenant_id = public.get_tenant_id());
 
 -- Users can update payments in their tenant
 CREATE POLICY "Users can update payments in their tenant"
   ON payments
   FOR UPDATE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can delete payments in their tenant
 CREATE POLICY "Users can delete payments in their tenant"
   ON payments
   FOR DELETE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- ============================================================================
 -- INVENTORY TABLE POLICIES
@@ -534,25 +534,25 @@ CREATE POLICY "Users can delete payments in their tenant"
 CREATE POLICY "Users can view inventory in their tenant"
   ON inventory
   FOR SELECT
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can insert inventory in their tenant
 CREATE POLICY "Users can insert inventory in their tenant"
   ON inventory
   FOR INSERT
-  WITH CHECK (tenant_id = auth.tenant_id());
+  WITH CHECK (tenant_id = public.get_tenant_id());
 
 -- Users can update inventory in their tenant
 CREATE POLICY "Users can update inventory in their tenant"
   ON inventory
   FOR UPDATE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can delete inventory in their tenant
 CREATE POLICY "Users can delete inventory in their tenant"
   ON inventory
   FOR DELETE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- ============================================================================
 -- TAX RATES TABLE POLICIES
@@ -562,25 +562,25 @@ CREATE POLICY "Users can delete inventory in their tenant"
 CREATE POLICY "Users can view tax rates in their tenant"
   ON tax_rates
   FOR SELECT
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can insert tax rates in their tenant
 CREATE POLICY "Users can insert tax rates in their tenant"
   ON tax_rates
   FOR INSERT
-  WITH CHECK (tenant_id = auth.tenant_id());
+  WITH CHECK (tenant_id = public.get_tenant_id());
 
 -- Users can update tax rates in their tenant
 CREATE POLICY "Users can update tax rates in their tenant"
   ON tax_rates
   FOR UPDATE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can delete tax rates in their tenant
 CREATE POLICY "Users can delete tax rates in their tenant"
   ON tax_rates
   FOR DELETE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- ============================================================================
 -- INVOICE TEMPLATES TABLE POLICIES
@@ -590,25 +590,25 @@ CREATE POLICY "Users can delete tax rates in their tenant"
 CREATE POLICY "Users can view templates in their tenant"
   ON invoice_templates
   FOR SELECT
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can insert templates in their tenant
 CREATE POLICY "Users can insert templates in their tenant"
   ON invoice_templates
   FOR INSERT
-  WITH CHECK (tenant_id = auth.tenant_id());
+  WITH CHECK (tenant_id = public.get_tenant_id());
 
 -- Users can update templates in their tenant
 CREATE POLICY "Users can update templates in their tenant"
   ON invoice_templates
   FOR UPDATE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- Users can delete templates in their tenant
 CREATE POLICY "Users can delete templates in their tenant"
   ON invoice_templates
   FOR DELETE
-  USING (tenant_id = auth.tenant_id());
+  USING (tenant_id = public.get_tenant_id());
 
 -- ============================================================================
 -- VERIFICATION QUERY FOR RLS
@@ -687,7 +687,7 @@ ORDER BY tablename, policyname;
 --    - All tables have tenant isolation policies
 --    - Users can only access data from their own tenant
 --    - Admins have additional permissions for deleting critical data
---    - Helper function auth.tenant_id() extracts tenant from JWT
+--    - Helper function public.get_tenant_id() extracts tenant from JWT
 
 -- 7. Backend Integration:
 --    Your backend must set the tenant_id in the JWT token claims

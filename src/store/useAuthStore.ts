@@ -23,6 +23,8 @@ const decodeSession = (encoded: string): object | null => {
 interface User {
   id: string;
   username: string;
+  name?: string | null;
+  email?: string | null;
   tenantId: string;
   branchId: string;
   role: 'owner' | 'admin' | 'manager' | 'staff' | 'viewer';
@@ -93,13 +95,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       
       const result = await res.json();
-      
+      const resultUser = result.user || {};
+      const normalizedUsername =
+        resultUser.username?.trim?.() ||
+        resultUser.name?.trim?.() ||
+        resultUser.email?.trim?.() ||
+        username;
+
       const user: User = {
-        id: result.user.id,
-        username: result.user.username,
-        tenantId: result.user.tenantId,
-        branchId: result.user.branchId,
-        role: result.user.role
+        id: resultUser.id,
+        username: normalizedUsername || username,
+        name: resultUser.name ?? null,
+        email: resultUser.email ?? null,
+        tenantId: resultUser.tenantId,
+        branchId: resultUser.branchId,
+        role: resultUser.role
       };
 
       // Store session data (non-sensitive) in sessionStorage - encoded
@@ -107,6 +117,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const sessionData = {
         userId: user.id,
         username: user.username,
+        name: user.name,
+        email: user.email,
         tenantId: user.tenantId,
         branchId: user.branchId,
         role: user.role,
@@ -197,9 +209,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     // Reconstruct user from session data
+    const reconstructedUsername =
+      sessionData.username || sessionData.name || sessionData.email || '';
+
     const user: User = {
       id: sessionData.userId,
-      username: sessionData.username || '',
+      username: reconstructedUsername,
+      name: sessionData.name || null,
+      email: sessionData.email || null,
       tenantId: sessionData.tenantId || '',
       branchId: sessionData.branchId || '',
       role: (sessionData.role as User['role']) || 'viewer'

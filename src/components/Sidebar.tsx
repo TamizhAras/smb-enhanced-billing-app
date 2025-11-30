@@ -76,6 +76,12 @@ const navigationItems = [
 export const Sidebar: React.FC = () => {
   const { user, logout, canAccessAllBranches } = useAuthStore();
 
+  const displayName = user?.username || user?.name || user?.email || 'User';
+  const displayInitial = displayName.charAt(0).toUpperCase();
+  const roleLabel = user?.role
+    ? user.role.charAt(0).toUpperCase() + user.role.slice(1)
+    : 'Member';
+
   const handleLogout = () => {
     logout();
     window.location.href = '/login';
@@ -139,15 +145,15 @@ export const Sidebar: React.FC = () => {
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
                 <span className="text-white text-sm font-medium">
-                  {user.username.charAt(0).toUpperCase()}
+                  {displayInitial}
                 </span>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-gray-900 text-sm truncate">
-                  {user.username}
+                  {displayName}
                 </div>
                 <div className="text-xs text-gray-500 capitalize">
-                  {user.role}
+                  {roleLabel}
                 </div>
               </div>
             </div>
