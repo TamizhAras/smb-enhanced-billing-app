@@ -45,7 +45,7 @@ router.get('/dashboard/:tenantId', authenticateToken, async (req, res) => {
       overdueRevenue: acc.overdueRevenue + branch.overdueRevenue,
       totalInvoices: acc.totalInvoices + branch.invoiceCount,
       totalCustomers: acc.totalCustomers + branch.customerCount
-    }, {
+    }), {
       totalRevenue: 0,
       paidRevenue: 0,
       pendingRevenue: 0,
