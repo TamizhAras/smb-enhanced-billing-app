@@ -14,10 +14,12 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
+    "@types/papaparse": "^5.5.2",
     "date-fns": "^4.1.0",
     "dexie": "^4.0.11",
     "jspdf": "^3.0.1",
     "lucide-react": "^0.536.0",
+    "papaparse": "^5.5.3",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
