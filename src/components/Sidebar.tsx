@@ -11,7 +11,8 @@ import {
   UserCheck,
   Brain,
   LogOut,
-  LayoutDashboard
+  LayoutDashboard,
+  Settings
 } from 'lucide-react';
 import { BranchSelector } from './BranchSelector';
 import { useAuthStore } from '../store/useAuthStore';
@@ -70,6 +71,16 @@ const navigationItems = [
     href: '/ai-insights',
     icon: Brain,
     description: 'Smart business recommendations'
+  }
+];
+
+const ownerOnlyItems = [
+  {
+    name: 'Branch Management',
+    href: '/branches',
+    icon: Settings,
+    description: 'Create & manage branches',
+    ownerOnly: true
   }
 ];
 
@@ -134,6 +145,39 @@ export const Sidebar: React.FC = () => {
               </NavLink>
             );
           })}
+
+          {/* Owner-only Items */}
+          {user?.role === 'owner' && (
+            <>
+              <div className="pt-4 pb-2">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">
+                  Administration
+                </div>
+              </div>
+              {ownerOnlyItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.name}
+                    to={item.href}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      }`
+                    }
+                  >
+                    <Icon className="h-5 w-5" />
+                    <div className="flex-1">
+                      <div className="font-medium">{item.name}</div>
+                      <div className="text-xs text-gray-500">{item.description}</div>
+                    </div>
+                  </NavLink>
+                );
+              })}
+            </>
+          )}
         </div>
       </nav>
 

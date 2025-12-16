@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Sidebar } from './components/Sidebar';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PWAInstallPrompt } from './components/PWAInstallPrompt';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import EnhancedBillingPage from './pages/EnhancedBillingPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { FeedbackPage } from './pages/FeedbackPage';
@@ -12,6 +13,7 @@ import { InventoryPage } from './pages/InventoryPage';
 import StaffPage from './pages/StaffPage';
 import AIInsightsPage from './pages/AIInsightsPage';
 import OwnerDashboardPage from './pages/OwnerDashboardPage';
+import { BranchManagementPage } from './pages/BranchManagementPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import { useAuthStore } from './store/useAuthStore';
@@ -68,6 +70,11 @@ function App() {
                       <Route path="/feedback" element={<FeedbackPage />} />
                       <Route path="/analytics" element={<AnalyticsPage />} />
                       <Route path="/ai-insights" element={<AIInsightsPage />} />
+                      <Route path="/branches" element={
+                        <ErrorBoundary>
+                          <BranchManagementPage />
+                        </ErrorBoundary>
+                      } />
                     </Routes>
                   </div>
                 </main>

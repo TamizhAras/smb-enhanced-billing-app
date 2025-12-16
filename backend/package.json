@@ -11,12 +11,15 @@
     "smoke": "node scripts/smokeTests.js"
   },
   "dependencies": {
+    "@types/papaparse": "^5.5.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
     "node-fetch": "^3.3.2",
+    "papaparse": "^5.5.3",
     "pg": "^8.11.3",
     "uuid": "^13.0.0"
   },

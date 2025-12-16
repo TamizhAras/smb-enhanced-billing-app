@@ -18,7 +18,8 @@ async function runMigrations() {
     '006_add_missing_columns.sql',  // Add repository-expected columns
     '007_complete_customer_fields.sql',  // Complete customer table fields
     '008_final_alignment.sql',  // Final alignment of all tables
-    '009_invoice_complete_fields.sql'  // Add ALL missing invoice columns
+    '009_invoice_complete_fields.sql',  // Add ALL missing invoice columns
+    '010_branch_enhanced_fields.sql'  // Add enhanced branch fields for Phase 2
   ];
   
   console.log('Running migrations...');
