@@ -7,8 +7,7 @@ export class InvoiceRepository {
   
   async createInvoice(invoiceData) {
     const db = await getDb();
-    try {
-      const {
+    const {
         id, tenantId, branchId, invoiceNumber, customerId, customerName, customerEmail,
         customerAddress, customerPhone, issueDate, dueDate, status, items, subtotal,
         discountType, discountValue, discountAmount, taxRate, taxAmount, totalAmount,
@@ -44,13 +43,11 @@ export class InvoiceRepository {
       ]);
 
       return await this.findById(id);
-    }
   }
 
   async findAll(tenantId, branchId, filters = {}) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT 
           id, tenant_id as tenantId, branch_id as branchId, invoice_number as invoiceNumber,
           customer_id as customerId, customer_name as customerName, customer_email as customerEmail,
@@ -110,13 +107,11 @@ export class InvoiceRepository {
         tags: inv.tags ? JSON.parse(inv.tags) : [],
         isRecurring: Boolean(inv.isRecurring)
       }));
-    }
   }
 
   async findById(id) {
     const db = await getDb();
-    try {
-      const invoice = await db.get(`
+    const invoice = await db.get(`
         SELECT 
           id, tenant_id as tenantId, branch_id as branchId, invoice_number as invoiceNumber,
           customer_id as customerId, customer_name as customerName, customer_email as customerEmail,
@@ -141,13 +136,11 @@ export class InvoiceRepository {
         invoice.isRecurring = Boolean(invoice.isRecurring);
       }
       return invoice;
-    }
   }
 
   async findByInvoiceNumber(invoiceNumber, tenantId) {
     const db = await getDb();
-    try {
-      const invoice = await db.get(`
+    const invoice = await db.get(`
         SELECT * FROM invoices 
         WHERE invoice_number = ? AND tenant_id = ?
       `, [invoiceNumber, tenantId]);
@@ -156,13 +149,11 @@ export class InvoiceRepository {
         invoice.tags = JSON.parse(invoice.tags);
       }
       return invoice;
-    }
   }
 
   async update(id, updates) {
     const db = await getDb();
-    try {
-      const fields = [];
+    const fields = [];
       const values = [];
 
       const fieldMap = {
@@ -200,33 +191,27 @@ export class InvoiceRepository {
       );
 
       return await this.findById(id);
-    }
   }
 
   async delete(id) {
     const db = await getDb();
-    try {
-      await db.run('DELETE FROM invoices WHERE id = ?', [id]);
-    }
+    await db.run('DELETE FROM invoices WHERE id = ?', [id]);
   }
 
   async updateStatus(id, status) {
     const db = await getDb();
-    try {
-      await db.run(`
+    await db.run(`
         UPDATE invoices 
         SET status = ?, updated_at = ? 
         WHERE id = ?
       `, [status, new Date().toISOString(), id]);
 
       return await this.findById(id);
-    }
   }
 
   async getOverdueInvoices(tenantId, branchId = null) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT * FROM invoices 
         WHERE tenant_id = ? 
         AND status IN ('pending', 'partial')
@@ -242,25 +227,21 @@ export class InvoiceRepository {
       query += ' ORDER BY due_date ASC';
 
       return await db.all(query, params);
-    }
   }
 
   async getRecurringInvoices(tenantId) {
     const db = await getDb();
-    try {
-      return await db.all(`
+    return await db.all(`
         SELECT * FROM invoices 
         WHERE tenant_id = ? AND is_recurring = 1
         AND (recurring_end_date IS NULL OR recurring_end_date > ?)
         ORDER BY created_at DESC
       `, [tenantId, new Date().toISOString()]);
-    }
   }
 
   async getInvoiceStats(tenantId, branchId = null, filters = {}) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT 
           COUNT(*) as totalCount,
           SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paidCount,
@@ -303,24 +284,19 @@ export class InvoiceRepository {
         totalOutstanding: stats.totalOutstanding || 0,
         averageInvoiceAmount: stats.averageInvoiceAmount || 0
       };
-    }
   }
 
   // Legacy methods for backward compatibility
   async getInvoicesByBranch(branchId) {
     const db = await getDb();
-    try {
-      const invoices = await db.all('SELECT * FROM invoices WHERE branch_id = ?', [branchId]);
-      return invoices;
-    }
+    const invoices = await db.all('SELECT * FROM invoices WHERE branch_id = ?', [branchId]);
+    return invoices;
   }
 
   async getInvoicesByTenant(tenantId) {
     const db = await getDb();
-    try {
-      const invoices = await db.all('SELECT * FROM invoices WHERE tenant_id = ?', [tenantId]);
-      return invoices;
-    }
+    const invoices = await db.all('SELECT * FROM invoices WHERE tenant_id = ?', [tenantId]);
+    return invoices;
   }
 
   // ============================================================================
@@ -329,8 +305,7 @@ export class InvoiceRepository {
 
   async createPayment(paymentData) {
     const db = await getDb();
-    try {
-      const {
+    const {
         id, invoiceId, invoiceNumber, customerId, customerName, tenantId, branchId,
         amount, method, reference, notes, paymentDate
       } = paymentData;
@@ -362,13 +337,11 @@ export class InvoiceRepository {
       `, [amount, amount, amount, amount, new Date().toISOString(), invoiceId]);
 
       return await this.findPaymentById(id);
-    }
   }
 
   async findPaymentById(id) {
     const db = await getDb();
-    try {
-      const payment = await db.get(`
+    const payment = await db.get(`
         SELECT 
           id, invoice_id as invoiceId, invoice_number as invoiceNumber,
           customer_id as customerId, customer_name as customerName,
@@ -377,13 +350,11 @@ export class InvoiceRepository {
         FROM payments WHERE id = ?
       `, [id]);
       return payment;
-    }
   }
 
   async getPaymentsByInvoice(invoiceId) {
     const db = await getDb();
-    try {
-      const payments = await db.all(`
+    const payments = await db.all(`
         SELECT 
           id, invoice_id as invoiceId, invoice_number as invoiceNumber,
           customer_id as customerId, customer_name as customerName,
@@ -394,13 +365,11 @@ export class InvoiceRepository {
         ORDER BY payment_date DESC
       `, [invoiceId]);
       return payments;
-    }
   }
 
   async getAllPayments(tenantId, branchId = null, filters = {}) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT 
           id, invoice_id as invoiceId, invoice_number as invoiceNumber,
           customer_id as customerId, customer_name as customerName,
@@ -439,13 +408,11 @@ export class InvoiceRepository {
       }
 
       return await db.all(query, params);
-    }
   }
 
   async updatePayment(id, updates) {
     const db = await getDb();
-    try {
-      const fields = [];
+    const fields = [];
       const values = [];
 
       const fieldMap = {
@@ -469,14 +436,12 @@ export class InvoiceRepository {
       );
 
       return await this.findPaymentById(id);
-    }
   }
 
   async deletePayment(id) {
     const db = await getDb();
-    try {
       // Get payment info before deleting
-      const payment = await this.findPaymentById(id);
+    const payment = await this.findPaymentById(id);
       if (!payment) return;
 
       // Delete payment
@@ -505,8 +470,7 @@ export class InvoiceRepository {
 
   async getTaxRates(tenantId, branchId = null, activeOnly = true) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT 
           id, tenant_id as tenantId, branch_id as branchId, name, rate,
           description, is_default as isDefault, is_active as isActive,
@@ -533,13 +497,11 @@ export class InvoiceRepository {
         isDefault: Boolean(rate.isDefault),
         isActive: Boolean(rate.isActive)
       }));
-    }
   }
 
   async createTaxRate(taxRateData) {
     const db = await getDb();
-    try {
-      const { id, tenantId, branchId, name, rate, description, isDefault, isActive } = taxRateData;
+    const { id, tenantId, branchId, name, rate, description, isDefault, isActive } = taxRateData;
 
       await db.run(`
         INSERT INTO tax_rates (
@@ -552,13 +514,11 @@ export class InvoiceRepository {
       ]);
 
       return await this.findTaxRateById(id);
-    }
   }
 
   async findTaxRateById(id) {
     const db = await getDb();
-    try {
-      const rate = await db.get(`
+    const rate = await db.get(`
         SELECT 
           id, tenant_id as tenantId, branch_id as branchId, name, rate,
           description, is_default as isDefault, is_active as isActive,
@@ -571,13 +531,11 @@ export class InvoiceRepository {
         rate.isActive = Boolean(rate.isActive);
       }
       return rate;
-    }
   }
 
   async updateTaxRate(id, updates) {
     const db = await getDb();
-    try {
-      const fields = [];
+    const fields = [];
       const values = [];
 
       const fieldMap = {
@@ -610,8 +568,7 @@ export class InvoiceRepository {
 
   async getTemplates(tenantId) {
     const db = await getDb();
-    try {
-      const templates = await db.all(`
+    const templates = await db.all(`
         SELECT 
           id, tenant_id as tenantId, name, description, layout,
           color_scheme as colorScheme, is_default as isDefault,
@@ -626,13 +583,11 @@ export class InvoiceRepository {
         isDefault: Boolean(t.isDefault),
         customFields: t.customFields ? JSON.parse(t.customFields) : []
       }));
-    }
   }
 
   async createTemplate(templateData) {
     const db = await getDb();
-    try {
-      const {
+    const {
         id, tenantId, name, description, layout, colorScheme, isDefault, customFields
       } = templateData;
 
@@ -649,13 +604,11 @@ export class InvoiceRepository {
       ]);
 
       return await this.findTemplateById(id);
-    }
   }
 
   async findTemplateById(id) {
     const db = await getDb();
-    try {
-      const template = await db.get(`
+    const template = await db.get(`
         SELECT 
           id, tenant_id as tenantId, name, description, layout,
           color_scheme as colorScheme, is_default as isDefault,
@@ -668,13 +621,11 @@ export class InvoiceRepository {
         template.customFields = template.customFields ? JSON.parse(template.customFields) : [];
       }
       return template;
-    }
   }
 
   async updateTemplate(id, updates) {
     const db = await getDb();
-    try {
-      const fields = [];
+    const fields = [];
       const values = [];
 
       const fieldMap = {

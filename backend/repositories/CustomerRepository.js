@@ -7,8 +7,7 @@ export class CustomerRepository {
 
   async findAll(tenantId, branchId = null, filters = {}) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT 
           id, name, email, phone, address, city, state, postal_code as postalCode,
           country, gst_number as gstNumber, pan_number as panNumber,
@@ -56,13 +55,11 @@ export class CustomerRepository {
         ...c,
         tags: c.tags ? JSON.parse(c.tags) : []
       }));
-    }
   }
 
   async findById(id) {
     const db = await getDb();
-    try {
-      const customer = await db.get(`
+    const customer = await db.get(`
         SELECT 
           id, name, email, phone, address, city, state, postal_code as postalCode,
           country, gst_number as gstNumber, pan_number as panNumber,
@@ -80,13 +77,11 @@ export class CustomerRepository {
         customer.tags = JSON.parse(customer.tags);
       }
       return customer;
-    }
   }
 
   async findByEmail(email, tenantId) {
     const db = await getDb();
-    try {
-      const customer = await db.get(`
+    const customer = await db.get(`
         SELECT * FROM customers 
         WHERE email = ? AND tenant_id = ?
       `, [email, tenantId]);
@@ -95,13 +90,11 @@ export class CustomerRepository {
         customer.tags = JSON.parse(customer.tags);
       }
       return customer;
-    }
   }
 
   async findByPhone(phone, tenantId) {
     const db = await getDb();
-    try {
-      const customer = await db.get(`
+    const customer = await db.get(`
         SELECT * FROM customers 
         WHERE phone = ? AND tenant_id = ?
       `, [phone, tenantId]);
@@ -110,13 +103,11 @@ export class CustomerRepository {
         customer.tags = JSON.parse(customer.tags);
       }
       return customer;
-    }
   }
 
   async create(customerData) {
     const db = await getDb();
-    try {
-      const {
+    const {
         id, name, email, phone, address, city, state, postalCode, country,
         gstNumber, panNumber, type, category, tags, totalSpent, totalOrders,
         averageOrderValue, lastOrderDate, creditLimit, paymentTerms, status,
@@ -144,13 +135,11 @@ export class CustomerRepository {
       ]);
 
       return await this.findById(id);
-    }
   }
 
   async update(id, updates) {
     const db = await getDb();
-    try {
-      const fields = [];
+    const fields = [];
       const values = [];
 
       const fieldMap = {
@@ -183,20 +172,16 @@ export class CustomerRepository {
       );
 
       return await this.findById(id);
-    }
   }
 
   async delete(id) {
     const db = await getDb();
-    try {
-      await db.run('DELETE FROM customers WHERE id = ?', [id]);
-    }
+    await db.run('DELETE FROM customers WHERE id = ?', [id]);
   }
 
   async searchCustomers(tenantId, branchId = null, searchQuery) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT 
           id, name, email, phone, address, city, state, postal_code as postalCode,
           country, gst_number as gstNumber, pan_number as panNumber,
@@ -232,13 +217,11 @@ export class CustomerRepository {
         ...c,
         tags: c.tags ? JSON.parse(c.tags) : []
       }));
-    }
   }
 
   async getTopCustomers(tenantId, branchId = null, limit = 10) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT 
           id, name, email, phone, total_spent as totalSpent, 
           total_orders as totalOrders, last_order_date as lastOrderDate,
@@ -258,13 +241,11 @@ export class CustomerRepository {
       params.push(limit);
 
       return await db.all(query, params);
-    }
   }
 
   async getCustomerStats(tenantId, branchId = null) {
     const db = await getDb();
-    try {
-      let query = `
+    let query = `
         SELECT 
           COUNT(*) as totalCount,
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as activeCount,
@@ -295,14 +276,12 @@ export class CustomerRepository {
         totalOrders: stats.totalOrders || 0,
         averageOrders: stats.averageOrders || 0
       };
-    }
   }
 
   async updateSpentMetrics(customerId) {
     const db = await getDb();
-    try {
       // Calculate total spent and orders from invoices
-      const stats = await db.get(`
+    const stats = await db.get(`
         SELECT 
           COUNT(*) as orderCount,
           SUM(total_amount) as totalSpent,
@@ -333,6 +312,5 @@ export class CustomerRepository {
       }
 
       return await this.findById(customerId);
-    }
   }
 }
