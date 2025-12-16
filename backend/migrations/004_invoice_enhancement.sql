@@ -191,7 +191,7 @@ INSERT OR IGNORE INTO invoice_templates (id, tenant_id, name, description, layou
 SELECT 'template_minimal', id, 'Minimal', 'Minimalist invoice design', 'minimal', '#6B7280', 0 FROM tenants LIMIT 1;
 
 -- Insert default company settings for each tenant
-INSERT OR IGNORE INTO company_settings (id, tenant_id, company_name, default_currency, invoice_prefix, invoice_start_number)
+INSERT INTO company_settings (id, tenant_id, company_name, default_currency, invoice_prefix, invoice_start_number) ON CONFLICT DO NOTHING
 SELECT 'settings_' || id, id, name, 'INR', 'INV', 1000 FROM tenants;
 
 -- ============================================================================

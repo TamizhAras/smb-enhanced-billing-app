@@ -125,7 +125,7 @@ class AIInsightsService {
 
 			const dayOfWeekQuery = `
 				SELECT 
-					CASE cast(strftime('%w', created_at) as integer)
+					CASE EXTRACT(DOW FROM created_at)::INTEGER
 						WHEN 0 THEN 'Sunday'
 						WHEN 1 THEN 'Monday'
 						WHEN 2 THEN 'Tuesday'
@@ -137,11 +137,11 @@ class AIInsightsService {
 					COUNT(*) as order_count,
 					SUM(total_amount) as revenue
 				FROM invoices
-				WHERE tenant_id = ? 
-					${branchId ? 'AND branch_id = ?' : ''}
-					AND status = 'paid'
-					AND created_at >= date('now', '-30 days')
-				GROUP BY day_name
+			WHERE tenant_id = ? 
+				${branchId ? 'AND branch_id = ?' : ''}
+				AND status = 'paid'
+				AND created_at >= NOW() - INTERVAL '30 days'
+			GROUP BY day_name
 				ORDER BY revenue DESC
 				LIMIT 1
 			`;
@@ -224,7 +224,7 @@ class AIInsightsService {
 				WHERE c.tenant_id = ?
 					${branchId ? 'AND c.branch_id = ?' : ''}
 				GROUP BY c.id
-				HAVING last_order < date('now', '-60 days') OR last_order IS NULL
+				HAVING last_order < NOW() - INTERVAL '60 days' OR last_order IS NULL
 			`;
 
 			const inactiveCustomers = await db.all(inactiveQuery, branchId ? [tenantId, branchId] : [tenantId]) || [];
@@ -248,12 +248,12 @@ class AIInsightsService {
 
 			const growthQuery = `
 				SELECT 
-					strftime('%Y-%m', created_at) as month,
+					TO_CHAR(created_at, 'YYYY-MM') as month,
 					COUNT(*) as new_customers
 				FROM customers
 				WHERE tenant_id = ?
 					${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-60 days')
+					AND created_at >= NOW() - INTERVAL '60 days'
 				GROUP BY month
 				ORDER BY month DESC
 				LIMIT 2
@@ -304,13 +304,13 @@ class AIInsightsService {
 				SELECT 
 					i.id, i.invoice_number, i.total_amount, i.due_date,
 					c.name as customer_name,
-					julianday('now') - julianday(i.due_date) as days_overdue
+					CAST(EXTRACT(EPOCH FROM (NOW() - i.due_date)) / 86400.0 AS INTEGER) as days_overdue
 				FROM invoices i
 				LEFT JOIN customers c ON i.customer_id = c.id
 				WHERE i.tenant_id = ?
 					${branchId ? 'AND i.branch_id = ?' : ''}
 					AND i.status IN ('draft', 'partial')
-					AND i.due_date < date('now')
+					AND i.due_date < CURRENT_DATE
 				ORDER BY days_overdue DESC
 			`;
 
@@ -349,11 +349,11 @@ class AIInsightsService {
 					COUNT(*) as count,
 					SUM(total_amount) as total
 				FROM invoices
-				WHERE tenant_id = ?
-					${branchId ? 'AND branch_id = ?' : ''}
-					AND status = 'paid'
-					AND created_at >= date('now', '-30 days')
-				GROUP BY payment_method
+			WHERE tenant_id = ?
+				${branchId ? 'AND branch_id = ?' : ''}
+				AND status = 'paid'
+				AND created_at >= NOW() - INTERVAL '30 days'
+			GROUP BY payment_method
 				ORDER BY count DESC
 			`;
 

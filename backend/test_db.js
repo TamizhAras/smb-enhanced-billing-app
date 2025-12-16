@@ -4,8 +4,11 @@ async function testDb() {
   const db = await getDb();
   
   // List tables
-  const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table'");
-  console.log('Tables:', tables.map(t => t.name));
+  const tables = await db.all(
+    `SELECT table_name FROM information_schema.tables 
+     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`
+  );
+  console.log('Tables:', tables.map(t => t.table_name));
   
   // Check inventory
   const inventory = await db.all('SELECT COUNT(*) as count FROM inventory');

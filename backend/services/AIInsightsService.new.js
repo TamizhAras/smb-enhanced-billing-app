@@ -155,7 +155,7 @@ class AIInsightsService {
 				FROM inventory i
 				LEFT JOIN invoice_items ii ON i.id = ii.item_id
 				LEFT JOIN invoices inv ON ii.invoice_id = inv.id
-					AND inv.created_at >= date('now', '-30 days')
+					AND inv.created_at >= NOW() - INTERVAL '30 days'
 				WHERE i.tenant_id = ? AND i.quantity > 0
 				${branchId ? 'AND i.branch_id = ?' : ''}
 				GROUP BY i.id
@@ -198,13 +198,13 @@ class AIInsightsService {
 		try {
 			const revenueQuery = `
 				SELECT 
-					strftime('%Y-%m', created_at) as month,
+					TO_CHAR(created_at, 'YYYY-MM') as month,
 					SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END) as revenue,
 					COUNT(*) as invoice_count
 				FROM invoices
 				WHERE tenant_id = ?
 					${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-60 days')
+					AND created_at >= NOW() - INTERVAL '60 days'
 				GROUP BY month
 				ORDER BY month DESC
 				LIMIT 2
@@ -256,7 +256,7 @@ class AIInsightsService {
 
 			const bestDayQuery = `
 				SELECT 
-					CASE CAST(strftime('%w', created_at) as INTEGER)
+					CASE EXTRACT(DOW FROM created_at)::INTEGER
 						WHEN 0 THEN 'Sunday'
 						WHEN 1 THEN 'Monday'
 						WHEN 2 THEN 'Tuesday'
@@ -271,7 +271,7 @@ class AIInsightsService {
 				WHERE tenant_id = ?
 					${branchId ? 'AND branch_id = ?' : ''}
 					AND status = 'paid'
-					AND created_at >= date('now', '-30 days')
+					AND created_at >= NOW() - INTERVAL '30 days'
 				GROUP BY day_name
 				ORDER BY revenue DESC
 				LIMIT 1
@@ -353,7 +353,7 @@ class AIInsightsService {
 				WHERE c.tenant_id = ?
 					${branchId ? 'AND c.branch_id = ?' : ''}
 				GROUP BY c.id
-				HAVING last_order < date('now', '-60 days') OR last_order IS NULL
+				HAVING last_order < NOW() - INTERVAL '60 days' OR last_order IS NULL
 			`;
 
 			const inactiveCustomers = await db.all(inactiveQuery, branchId ? [tenantId, branchId] : [tenantId]) || [];
@@ -376,12 +376,12 @@ class AIInsightsService {
 
 			const growthQuery = `
 				SELECT 
-					strftime('%Y-%m', created_at) as month,
+					TO_CHAR(created_at, 'YYYY-MM') as month,
 					COUNT(*) as new_customers
 				FROM customers
 				WHERE tenant_id = ?
 					${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-60 days')
+					AND created_at >= NOW() - INTERVAL '60 days'
 				GROUP BY month
 				ORDER BY month DESC
 				LIMIT 2
@@ -431,13 +431,13 @@ class AIInsightsService {
 				SELECT 
 					i.id, i.invoice_number, i.total_amount, i.due_date,
 					c.name as customer_name,
-					julianday('now') - julianday(i.due_date) as days_overdue
+					CAST(EXTRACT(EPOCH FROM (NOW() - i.due_date)) / 86400.0 AS INTEGER) as days_overdue
 				FROM invoices i
 				LEFT JOIN customers c ON i.customer_id = c.id
 				WHERE i.tenant_id = ?
 					${branchId ? 'AND i.branch_id = ?' : ''}
 					AND i.status IN ('draft', 'partial')
-					AND i.due_date < date('now')
+					AND i.due_date < CURRENT_DATE
 				ORDER BY days_overdue DESC
 			`;
 
@@ -480,7 +480,7 @@ class AIInsightsService {
 				WHERE tenant_id = ?
 					${branchId ? 'AND branch_id = ?' : ''}
 					AND status = 'paid'
-					AND created_at >= date('now', '-30 days')
+					AND created_at >= NOW() - INTERVAL '30 days'
 				GROUP BY payment_method
 				ORDER BY count DESC
 			`;
@@ -530,10 +530,8 @@ class AIInsightsService {
 				FROM feedback
 				WHERE tenant_id = ?
 					${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-30 days')
-			`;
-
-			const feedbackStats = await db.get(feedbackQuery, branchId ? [tenantId, branchId] : [tenantId]).catch(() => null);
+					AND created_at >= NOW() - INTERVAL '30 days'
+	`;			const feedbackStats = await db.get(feedbackQuery, branchId ? [tenantId, branchId] : [tenantId]).catch(() => null);
 			if (feedbackStats && feedbackStats.total_feedback > 0) {
 				const avgRating = parseFloat(feedbackStats.avg_rating.toFixed(1));
 
@@ -611,12 +609,12 @@ class AIInsightsService {
 
 			const peakHourQuery = `
 				SELECT 
-					CAST(strftime('%H', created_at) as INTEGER) as hour,
+					EXTRACT(HOUR FROM created_at)::INTEGER as hour,
 					COUNT(*) as order_count
 				FROM invoices
 				WHERE tenant_id = ?
 					${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-30 days')
+					AND created_at >= NOW() - INTERVAL '30 days'
 				GROUP BY hour
 				ORDER BY order_count DESC
 				LIMIT 3
@@ -668,7 +666,7 @@ class AIInsightsService {
 				SELECT 
 					SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END) as total_inflow,
 					SUM(CASE WHEN status IN ('draft', 'partial') THEN total_amount ELSE 0 END) as pending_amount,
-					SUM(CASE WHEN status = 'paid' AND created_at >= date('now', '-7 days') THEN total_amount ELSE 0 END) as weekly_inflow
+					SUM(CASE WHEN status = 'paid' AND created_at >= NOW() - INTERVAL '7 days' THEN total_amount ELSE 0 END) as weekly_inflow
 				FROM invoices
 				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
 			`;
@@ -693,11 +691,11 @@ class AIInsightsService {
 				SELECT 
 					COUNT(*) as overdue_count,
 					SUM(total_amount) as overdue_amount,
-					AVG(julianday('now') - julianday(due_date)) as avg_days_overdue
+					AVG(CAST(EXTRACT(EPOCH FROM (NOW() - due_date)) / 86400.0 AS INTEGER)) as avg_days_overdue
 				FROM invoices
 				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
 					AND status IN ('draft', 'partial')
-					AND due_date < date('now')
+					AND due_date < CURRENT_DATE
 			`;
 			const outstanding = await db.get(outstandingQuery, branchId ? [tenantId, branchId] : [tenantId]);
 			
@@ -729,7 +727,7 @@ class AIInsightsService {
 				JOIN invoices inv ON ii.invoice_id = inv.id
 				WHERE inv.tenant_id = ? ${branchId ? 'AND inv.branch_id = ?' : ''}
 					AND inv.status = 'paid'
-					AND inv.created_at >= date('now', '-30 days')
+					AND inv.created_at >= NOW() - INTERVAL '30 days'
 				GROUP BY i.category
 				HAVING units_sold > 0
 				ORDER BY margin_pct ASC
@@ -776,7 +774,7 @@ class AIInsightsService {
 				JOIN invoices i ON ii.invoice_id = i.id
 				WHERE i.tenant_id = ? ${branchId ? 'AND i.branch_id = ?' : ''}
 					AND i.status = 'paid'
-					AND i.created_at >= date('now', '-30 days')
+					AND i.created_at >= NOW() - INTERVAL '30 days'
 				GROUP BY ii.item_name
 				ORDER BY units_sold DESC
 				LIMIT 5
@@ -806,7 +804,7 @@ class AIInsightsService {
 				FROM inventory i
 				LEFT JOIN invoice_items ii ON i.id = ii.item_id
 				LEFT JOIN invoices inv ON ii.invoice_id = inv.id 
-					AND inv.created_at >= date('now', '-30 days')
+					AND inv.created_at >= NOW() - INTERVAL '30 days'
 					AND inv.status = 'paid'
 				WHERE i.tenant_id = ? ${branchId ? 'AND i.branch_id = ?' : ''}
 					AND i.quantity > 0
@@ -837,14 +835,12 @@ class AIInsightsService {
 					AVG(total_amount) as avg_order_value,
 					COUNT(*) as order_count,
 					SUM(total_amount) as total_revenue
-				FROM invoices
-				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
-					AND status = 'paid'
-					AND created_at >= date('now', '-30 days')
-			`;
-			const avgTransaction = await db.get(avgTransactionQuery, branchId ? [tenantId, branchId] : [tenantId]);
-			
-			if (avgTransaction && avgTransaction.order_count > 0) {
+			FROM invoices
+			WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
+				AND status = 'paid'
+				AND created_at >= NOW() - INTERVAL '30 days'
+		`;
+		const avgTransaction = await db.get(avgTransactionQuery, branchId ? [tenantId, branchId] : [tenantId]);			if (avgTransaction && avgTransaction.order_count > 0) {
 				insights.push({
 					id: `sales-aov-${Date.now()}`,
 					type: 'sales-intelligence',
@@ -861,13 +857,13 @@ class AIInsightsService {
 			// Sales Comparison (this month vs last month)
 			const salesComparisonQuery = `
 				SELECT 
-					strftime('%Y-%m', created_at) as month,
+					TO_CHAR(created_at, 'YYYY-MM') as month,
 					COUNT(*) as order_count,
 					SUM(total_amount) as revenue
 				FROM invoices
 				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
 					AND status = 'paid'
-					AND created_at >= date('now', '-60 days')
+					AND created_at >= NOW() - INTERVAL '60 days'
 				GROUP BY month
 				ORDER BY month DESC
 				LIMIT 2
@@ -951,7 +947,7 @@ class AIInsightsService {
 					c.email,
 					MAX(i.created_at) as last_order_date,
 					COUNT(i.id) as total_orders,
-					julianday('now') - julianday(MAX(i.created_at)) as days_since_last_order
+					CAST(EXTRACT(EPOCH FROM (NOW() - MAX(i.created_at))) / 86400.0 AS INTEGER) as days_since_last_order
 				FROM customers c
 				LEFT JOIN invoices i ON c.id = i.customer_id
 				WHERE c.tenant_id = ? ${branchId ? 'AND c.branch_id = ?' : ''}
@@ -1037,7 +1033,7 @@ class AIInsightsService {
 				JOIN invoices i ON ii.invoice_id = i.id
 				WHERE i.tenant_id = ? ${branchId ? 'AND i.branch_id = ?' : ''}
 					AND i.status = 'paid'
-					AND i.created_at >= date('now', '-60 days')
+					AND i.created_at >= NOW() - INTERVAL '60 days'
 				GROUP BY ii.item_name
 				HAVING total_sold > 10
 				ORDER BY total_sold DESC
@@ -1082,7 +1078,7 @@ class AIInsightsService {
 					JOIN invoices inv ON ii.invoice_id = inv.id
 					WHERE inv.tenant_id = ? ${branchId ? 'AND inv.branch_id = ?' : ''}
 						AND inv.status = 'paid'
-						AND inv.created_at >= date('now', '-30 days')
+						AND inv.created_at >= NOW() - INTERVAL '30 days'
 					GROUP BY ii.item_id, sale_date
 				) daily_sales ON i.id = daily_sales.item_id
 				WHERE i.tenant_id = ? ${branchId ? 'AND i.branch_id = ?' : ''}
@@ -1111,19 +1107,17 @@ class AIInsightsService {
 			}
 
 			// Revenue Projection
-			const revenueProjectionQuery = `
-				SELECT 
-					SUM(total_amount) as last_30_days_revenue,
-					COUNT(*) as order_count,
-					AVG(total_amount) as avg_order_value
-				FROM invoices
-				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
-					AND status = 'paid'
-					AND created_at >= date('now', '-30 days')
-			`;
-			const revenueData = await db.get(revenueProjectionQuery, branchId ? [tenantId, branchId] : [tenantId]);
-			
-			if (revenueData && revenueData.order_count > 0) {
+		const revenueProjectionQuery = `
+			SELECT 
+				SUM(total_amount) as last_30_days_revenue,
+				COUNT(*) as order_count,
+				AVG(total_amount) as avg_order_value
+			FROM invoices
+			WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
+				AND status = 'paid'
+				AND created_at >= NOW() - INTERVAL '30 days'
+		`;
+		const revenueData = await db.get(revenueProjectionQuery, branchId ? [tenantId, branchId] : [tenantId]);			if (revenueData && revenueData.order_count > 0) {
 				const projectedRevenue = revenueData.last_30_days_revenue; // Simple projection
 				insights.push({
 					id: `pred-revenue-${Date.now()}`,
@@ -1158,13 +1152,11 @@ class AIInsightsService {
 			const allOrdersQuery = `
 				SELECT total_amount
 				FROM invoices
-				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
-					AND status = 'paid'
-					AND created_at >= date('now', '-30 days')
-			`;
-			const allOrders = await db.all(allOrdersQuery, branchId ? [tenantId, branchId] : [tenantId]).catch(() => []);
-			
-			if (allOrders.length > 5) {
+			WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
+				AND status = 'paid'
+				AND created_at >= NOW() - INTERVAL '30 days'
+		`;
+		const allOrders = await db.all(allOrdersQuery, branchId ? [tenantId, branchId] : [tenantId]).catch(() => []);			if (allOrders.length > 5) {
 				const amounts = allOrders.map(o => o.total_amount);
 				const avg_amount = amounts.reduce((sum, a) => sum + a, 0) / amounts.length;
 				const variance = amounts.reduce((sum, a) => sum + Math.pow(a - avg_amount, 2), 0) / amounts.length;
@@ -1176,7 +1168,7 @@ class AIInsightsService {
 					WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
 						AND status = 'paid'
 						AND total_amount > ?
-						AND created_at >= date('now', '-7 days')
+						AND created_at >= NOW() - INTERVAL '7 days'
 					ORDER BY total_amount DESC
 					LIMIT 5
 				`;
@@ -1208,7 +1200,7 @@ class AIInsightsService {
 					GROUP_CONCAT(id) as invoice_ids
 				FROM invoices
 				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-1 day')
+					AND created_at >= NOW() - INTERVAL '1 day'
 					AND customer_id IS NOT NULL
 				GROUP BY customer_id, total_amount, DATE(created_at)
 				HAVING duplicate_count > 1
@@ -1239,7 +1231,7 @@ class AIInsightsService {
 				FROM inventory i
 				LEFT JOIN invoice_items ii ON i.id = ii.item_id
 				LEFT JOIN invoices inv ON ii.invoice_id = inv.id 
-					AND inv.created_at >= date('now', '-7 days')
+					AND inv.created_at >= NOW() - INTERVAL '7 days'
 				WHERE i.tenant_id = ? ${branchId ? 'AND i.branch_id = ?' : ''}
 				GROUP BY i.id
 				HAVING recorded_sales > 0 AND current_stock > expected_stock
@@ -1279,12 +1271,12 @@ class AIInsightsService {
 			// Peak Hour Analysis
 			const peakHoursQuery = `
 				SELECT 
-					CAST(strftime('%H', created_at) AS INTEGER) as hour,
+					EXTRACT(HOUR FROM created_at)::INTEGER as hour,
 					COUNT(*) as order_count,
 					SUM(total_amount) as revenue
 				FROM invoices
 				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-30 days')
+					AND created_at >= NOW() - INTERVAL '30 days'
 				GROUP BY hour
 				ORDER BY order_count DESC
 				LIMIT 5
@@ -1322,7 +1314,7 @@ class AIInsightsService {
 						AVG(CASE WHEN i.status = 'paid' THEN i.total_amount ELSE NULL END) as avg_order_value
 					FROM branches b
 					LEFT JOIN invoices i ON b.id = i.branch_id 
-						AND i.created_at >= date('now', '-30 days')
+						AND i.created_at >= NOW() - INTERVAL '30 days'
 					WHERE b.tenant_id = ?
 					GROUP BY b.id
 					HAVING order_count > 0
@@ -1350,18 +1342,16 @@ class AIInsightsService {
 			}
 
 			// Order Processing Efficiency
-			const efficiencyQuery = `
-				SELECT 
-					COUNT(*) as total_orders,
-					SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as completed,
-					SUM(CASE WHEN status IN ('draft', 'partial') THEN 1 ELSE 0 END) as pending
-				FROM invoices
-				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-7 days')
-			`;
-			const efficiency = await db.get(efficiencyQuery, branchId ? [tenantId, branchId] : [tenantId]);
-			
-			if (efficiency && efficiency.total_orders > 0) {
+		const efficiencyQuery = `
+			SELECT 
+				COUNT(*) as total_orders,
+				SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as completed,
+				SUM(CASE WHEN status IN ('draft', 'partial') THEN 1 ELSE 0 END) as pending
+			FROM invoices
+			WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
+				AND created_at >= NOW() - INTERVAL '7 days'
+		`;
+		const efficiency = await db.get(efficiencyQuery, branchId ? [tenantId, branchId] : [tenantId]);			if (efficiency && efficiency.total_orders > 0) {
 				const completionRate = Math.round((efficiency.completed / efficiency.total_orders) * 100);
 				if (completionRate < 80) {
 					insights.push({
@@ -1401,7 +1391,7 @@ class AIInsightsService {
 					AVG(CASE WHEN status = 'paid' THEN total_amount ELSE NULL END) as avg_order_value
 				FROM invoices
 				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
-					AND DATE(created_at) = DATE('now')
+					AND DATE(created_at) = CURRENT_DATE
 			`;
 			const dailyStats = await db.get(dailySummaryQuery, branchId ? [tenantId, branchId] : [tenantId]);
 			
@@ -1422,12 +1412,12 @@ class AIInsightsService {
 			// Weekly Trend Analysis
 			const weeklyTrendQuery = `
 				SELECT 
-					strftime('%Y-W%W', created_at) as week,
+					TO_CHAR(created_at, 'IYYY-W') as week,
 					COUNT(*) as orders,
 					SUM(CASE WHEN status = 'paid' THEN total_amount ELSE 0 END) as revenue
 				FROM invoices
 				WHERE tenant_id = ? ${branchId ? 'AND branch_id = ?' : ''}
-					AND created_at >= date('now', '-14 days')
+					AND created_at >= NOW() - INTERVAL '14 days'
 				GROUP BY week
 				ORDER BY week DESC
 				LIMIT 2

@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS seasonal_events (
 );
 
 -- Pre-populate with common Indian festivals/events
-INSERT OR IGNORE INTO seasonal_events (id, name, event_type, region, start_date, end_date, impact_factor, affected_categories) VALUES
+INSERT INTO seasonal_events (id, name, event_type, region, start_date, end_date, impact_factor, affected_categories) VALUES
 ('diwali-2025', 'Diwali', 'festival', 'all', '2025-10-20', '2025-10-25', 2.5, '["electronics", "clothing", "gifts", "sweets", "home_decor"]'),
 ('holi-2026', 'Holi', 'festival', 'all', '2026-03-14', '2026-03-15', 1.8, '["colors", "sweets", "beverages", "clothing"]'),
 ('eid-2025', 'Eid ul-Fitr', 'festival', 'all', '2025-03-30', '2025-04-01', 2.0, '["clothing", "perfumes", "gifts", "food"]'),

@@ -1,86 +1,72 @@
-import pg from 'pg';
-const { Pool } = pg;
+/**
+ * Database Module - Entry point for database access
+ * 
+ * This module provides backwards-compatible access to the database through
+ * the PostgresAdapter. All application code uses getDb() which returns
+ * an adapter instance that normalizes queries across the PostgreSQL database.
+ * 
+ * The adapter automatically handles:
+ * - Placeholder conversion (? → $1, $2, etc)
+ * - SQLite-to-Postgres syntax normalization (INSERT OR IGNORE → ON CONFLICT)
+ * - Parameter array normalization
+ */
 
-let pool;
+import { PostgresAdapter } from './adapters/PostgresAdapter.js';
 
-const normalizeInsertIgnore = (sql) => {
-  if (!/INSERT\s+OR\s+IGNORE/i.test(sql)) {
-    return sql;
-  }
+// Singleton adapter instance
+let adapter;
 
-  const withoutDirective = sql.replace(/INSERT\s+OR\s+IGNORE/gi, 'INSERT');
-  const trimmed = withoutDirective.trimEnd();
-  const hasSemicolon = trimmed.endsWith(';');
-  const base = hasSemicolon ? trimmed.slice(0, -1) : trimmed;
-  return `${base} ON CONFLICT DO NOTHING${hasSemicolon ? ';' : ''}`;
-};
-
-const convertPlaceholders = (sql) => {
-  let index = 0;
-  return sql.replace(/\?/g, () => {
-    index += 1;
-    return `$${index}`;
-  });
-};
-
-const normalizeParams = (params) => {
-  if (!params || params.length === 0) return [];
-  if (params.length === 1 && Array.isArray(params[0])) {
-    return params[0];
-  }
-  return params;
-};
-
-const buildQuery = (sql, values) => {
-  const normalized = normalizeInsertIgnore(sql);
-  const text = convertPlaceholders(normalized);
-  return { text, values };
-};
-
-const createDbAdapter = (poolInstance) => {
-  const runQuery = async (sql, values = []) => {
-    const { text, values: params } = buildQuery(sql, values);
-    return poolInstance.query(text, params);
-  };
-
-  return {
-    async query(sql, ...params) {
-      const values = normalizeParams(params);
-      return runQuery(sql, values);
-    },
-    async run(sql, ...params) {
-      const values = normalizeParams(params);
-      return runQuery(sql, values);
-    },
-    async get(sql, ...params) {
-      const values = normalizeParams(params);
-      const result = await runQuery(sql, values);
-      return result.rows[0] || null;
-    },
-    async all(sql, ...params) {
-      const values = normalizeParams(params);
-      const result = await runQuery(sql, values);
-      return result.rows;
-    },
-    async exec(sql) {
-      // For migration files containing multiple statements, rely on PostgreSQL's
-      // ability to execute batched commands separated by semicolons.
-      return poolInstance.query(sql);
-    },
-    async close() {
-      // No-op: using a shared pool that stays alive for the app lifetime.
-      return Promise.resolve();
-    }
-  };
-};
-
+/**
+ * Get the database adapter instance
+ * Uses lazy initialization for singleton pattern
+ * 
+ * @returns {PostgresAdapter} - Adapter instance for database operations
+ * 
+ * Usage:
+ * ```javascript
+ * const db = getDb();
+ * const users = await db.all('SELECT * FROM users WHERE id = ?', userId);
+ * const user = await db.get('SELECT * FROM users WHERE id = ?', userId);
+ * const result = await db.run('INSERT INTO users (name) VALUES (?)', name);
+ * ```
+ */
 export function getDb() {
-  if (!pool) {
-    pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
-    });
+  if (!adapter) {
+    adapter = PostgresAdapter.create();
   }
+  return adapter;
+}
 
-  return createDbAdapter(pool);
+/**
+ * Initialize database adapter with custom config
+ * Call this before getDb() to configure non-default settings
+ * 
+ * @param {Object} config - PostgreSQL configuration
+ * @returns {PostgresAdapter}
+ * 
+ * Usage:
+ * ```javascript
+ * initDb({
+ *   connectionString: 'postgresql://user:pass@host/db',
+ *   max: 20,
+ *   idleTimeoutMillis: 30000
+ * });
+ * ```
+ */
+export function initDb(config = {}) {
+  adapter = PostgresAdapter.create(config);
+  return adapter;
+}
+
+/**
+ * Close the database connection
+ * Call this during application shutdown
+ * 
+ * @returns {Promise<void>}
+ */
+export async function closeDb() {
+  if (adapter) {
+    await adapter.close();
+    adapter = null;
+  }
 }

@@ -210,7 +210,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
 -- Note: This assumes tenant_id '1' exists. Adjust as needed.
 
 -- Default tax rates
-INSERT OR IGNORE INTO tax_rates (name, rate, description, tenant_id) VALUES
+INSERT INTO tax_rates (name, rate, description, tenant_id) VALUES
 ('GST 0%', 0, 'Zero rated GST', '1'),
 ('GST 5%', 5, 'Reduced GST rate', '1'),
 ('GST 12%', 12, 'Standard GST rate', '1'),
@@ -218,13 +218,13 @@ INSERT OR IGNORE INTO tax_rates (name, rate, description, tenant_id) VALUES
 ('GST 28%', 28, 'Luxury goods GST', '1');
 
 -- Default invoice templates
-INSERT OR IGNORE INTO invoice_templates (name, description, template, is_default, tenant_id) VALUES
+INSERT INTO invoice_templates (name, description, template, is_default, tenant_id) VALUES
 ('Standard', 'Standard invoice template', '{}', 1, '1'),
 ('Modern', 'Modern invoice template with color', '{}', 0, '1'),
 ('Minimal', 'Minimal invoice template', '{}', 0, '1');
 
 -- Default company settings
-INSERT OR IGNORE INTO company_settings (
+INSERT INTO company_settings (
   company_name, default_currency, default_tax_rate, 
   invoice_prefix, invoice_start_number, tenant_id
 ) VALUES (

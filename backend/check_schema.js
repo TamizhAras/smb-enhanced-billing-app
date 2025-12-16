@@ -4,16 +4,28 @@ async function checkSchema() {
   const db = await getDb();
   
   console.log('\n=== INVOICES TABLE STRUCTURE ===');
-  const invoicesSchema = await db.all('PRAGMA table_info(invoices)');
-  console.log('Columns:', invoicesSchema.map(col => col.name).join(', '));
+  const invoicesSchema = await db.all(
+    `SELECT column_name FROM information_schema.columns 
+     WHERE table_schema = 'public' AND table_name = 'invoices' 
+     ORDER BY ordinal_position`
+  );
+  console.log('Columns:', invoicesSchema.map(col => col.column_name).join(', '));
   
   console.log('\n=== ALL TABLES ===');
-  const tables = await db.all("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
-  console.log('Tables:', tables.map(t => t.name).join(', '));
+  const tables = await db.all(
+    `SELECT table_name FROM information_schema.tables 
+     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+     ORDER BY table_name`
+  );
+  console.log('Tables:', tables.map(t => t.table_name).join(', '));
   
   console.log('\n=== CUSTOMERS TABLE STRUCTURE ===');
-  const customersSchema = await db.all('PRAGMA table_info(customers)');
-  console.log('Columns:', customersSchema.map(col => col.name).join(', '));
+  const customersSchema = await db.all(
+    `SELECT column_name FROM information_schema.columns 
+     WHERE table_schema = 'public' AND table_name = 'customers' 
+     ORDER BY ordinal_position`
+  );
+  console.log('Columns:', customersSchema.map(col => col.column_name).join(', '));
   
   await db.close();
 }

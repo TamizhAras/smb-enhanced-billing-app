@@ -3,17 +3,24 @@ import { getDb } from './models/db.js';
 async function checkAllTables() {
   const db = await getDb();
   
-  console.log('\n=== TAX_RATES TABLE STRUCTURE ===');
-  const taxRatesSchema = await db.all('PRAGMA table_info(tax_rates)');
-  console.log('Columns:', taxRatesSchema.map(col => col.name).join(', '));
+  const getTables = async (...tableNames) => {
+    for (const tableName of tableNames) {
+      console.log(`\n=== ${tableName.toUpperCase()} TABLE STRUCTURE ===`);
+      const schema = await db.all(
+        `SELECT column_name FROM information_schema.columns 
+         WHERE table_schema = 'public' AND table_name = $1 
+         ORDER BY ordinal_position`,
+        [tableName.toLowerCase()]
+      ).catch(() => []);
+      if (schema.length) {
+        console.log('Columns:', schema.map(col => col.column_name).join(', '));
+      } else {
+        console.log('Table not found or no columns');
+      }
+    }
+  };
   
-  console.log('\n=== INVOICE_TEMPLATES TABLE STRUCTURE ===');
-  const templatesSchema = await db.all('PRAGMA table_info(invoice_templates)');
-  console.log('Columns:', templatesSchema.map(col => col.name).join(', '));
-  
-  console.log('\n=== PAYMENTS TABLE STRUCTURE ===');
-  const paymentsSchema = await db.all('PRAGMA table_info(payments)');
-  console.log('Columns:', paymentsSchema.map(col => col.name).join(', '));
+  await getTables('tax_rates', 'invoice_templates', 'payments');
   
   await db.close();
 }

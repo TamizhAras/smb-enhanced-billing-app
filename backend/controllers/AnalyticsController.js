@@ -7,7 +7,7 @@ const router = express.Router();
 // Owner Dashboard - Aggregate stats for all branches
 router.get('/dashboard/:tenantId', authenticateToken, async (req, res) => {
   const { tenantId } = req.params;
-  const db = await getDb();
+  const db = getDb();
   
   try {
     // Get branch-level stats
@@ -45,7 +45,7 @@ router.get('/dashboard/:tenantId', authenticateToken, async (req, res) => {
       overdueRevenue: acc.overdueRevenue + branch.overdueRevenue,
       totalInvoices: acc.totalInvoices + branch.invoiceCount,
       totalCustomers: acc.totalCustomers + branch.customerCount
-    }), {
+    }, {
       totalRevenue: 0,
       paidRevenue: 0,
       pendingRevenue: 0,
@@ -54,10 +54,8 @@ router.get('/dashboard/:tenantId', authenticateToken, async (req, res) => {
       totalCustomers: 0
     });
 
-    await db.close();
     res.json({ branches, totals });
   } catch (error) {
-    await db.close();
     console.error('Dashboard API error:', error);
     res.status(500).json({ error: 'Failed to fetch dashboard data' });
   }
@@ -67,81 +65,75 @@ router.get('/dashboard/:tenantId', authenticateToken, async (req, res) => {
 // Revenue by branch for a tenant
 router.get('/revenue-by-branch/:tenantId', authenticateToken, async (req, res) => {
   const { tenantId } = req.params;
-  const db = await getDb();
+  const db = getDb();
   const rows = await db.all(
     `SELECT branch_id, SUM(amount) as totalRevenue, COUNT(*) as invoiceCount, b.name as branchName
      FROM invoices i
      LEFT JOIN branches b ON i.branch_id = b.id
-     WHERE i.tenant_id = ?
+     WHERE i.tenant_id = $1
      GROUP BY branch_id`,
     [tenantId]
   );
-  await db.close();
   res.json(rows);
 });
 
 // Total invoices for a tenant
 router.get('/total-invoices/:tenantId', authenticateToken, async (req, res) => {
   const { tenantId } = req.params;
-  const db = await getDb();
+  const db = getDb();
   const row = await db.get(
-    `SELECT COUNT(*) as totalInvoices FROM invoices WHERE tenant_id = ?`,
+    `SELECT COUNT(*) as totalInvoices FROM invoices WHERE tenant_id = $1`,
     [tenantId]
   );
-  await db.close();
   res.json(row);
 });
 
 // Customer count for a tenant
 router.get('/customer-count/:tenantId', authenticateToken, async (req, res) => {
   const { tenantId } = req.params;
-  const db = await getDb();
+  const db = getDb();
   const row = await db.get(
-    `SELECT COUNT(DISTINCT customer_name) as customerCount FROM invoices WHERE tenant_id = ?`,
+    `SELECT COUNT(DISTINCT customer_name) as customerCount FROM invoices WHERE tenant_id = $1`,
     [tenantId]
   );
-  await db.close();
   res.json(row);
 });
 
 // Overdue revenue for a tenant
 router.get('/overdue-revenue/:tenantId', authenticateToken, async (req, res) => {
   const { tenantId } = req.params;
-  const db = await getDb();
+  const db = getDb();
   const row = await db.get(
-    `SELECT SUM(amount) as overdueRevenue FROM invoices WHERE tenant_id = ? AND status = 'overdue'`,
+    `SELECT SUM(amount) as overdueRevenue FROM invoices WHERE tenant_id = $1 AND status = 'overdue'`,
     [tenantId]
   );
-  await db.close();
   res.json(row);
 });
 
 // Pending revenue for a tenant
 router.get('/pending-revenue/:tenantId', authenticateToken, async (req, res) => {
   const { tenantId } = req.params;
-  const db = await getDb();
+  const db = getDb();
   const row = await db.get(
-    `SELECT SUM(amount) as pendingRevenue FROM invoices WHERE tenant_id = ? AND status = 'pending'`,
+    `SELECT SUM(amount) as pendingRevenue FROM invoices WHERE tenant_id = $1 AND status = 'pending'`,
     [tenantId]
   );
-  await db.close();
   res.json(row);
 });
 
 // Monthly revenue for a tenant (last 6 months)
 router.get('/monthly-revenue/:tenantId', authenticateToken, async (req, res) => {
   const { tenantId } = req.params;
-  const db = await getDb();
+  const db = getDb();
   const rows = await db.all(
-    `SELECT strftime('%Y-%m', created_at) as month, SUM(amount) as totalRevenue
+    `SELECT TO_CHAR(created_at, 'YYYY-MM') as month, SUM(CAST(amount AS NUMERIC)) as totalRevenue
      FROM invoices
-     WHERE tenant_id = ?
-     GROUP BY month
+     WHERE tenant_id = $1
+     GROUP BY TO_CHAR(created_at, 'YYYY-MM')
      ORDER BY month DESC
      LIMIT 6`,
     [tenantId]
   );
-  await db.close();
   res.json(rows.reverse());
 });
 
