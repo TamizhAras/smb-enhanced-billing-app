@@ -7,7 +7,8 @@
     "dev": "nodemon index.js",
     "start": "node index.js",
     "seed": "node seed.js",
-    "migrate": "node migrations/runMigrations.js"
+    "migrate": "node migrations/runMigrations.js",
+    "smoke": "node scripts/smokeTests.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -44,6 +44,10 @@ const createDbAdapter = (poolInstance) => {
   };
 
   return {
+    async query(sql, ...params) {
+      const values = normalizeParams(params);
+      return runQuery(sql, values);
+    },
     async run(sql, ...params) {
       const values = normalizeParams(params);
       return runQuery(sql, values);

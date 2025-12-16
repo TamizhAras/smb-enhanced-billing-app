@@ -4,7 +4,7 @@ This is the Node.js + Express backend for your upgraded SMB Enhanced Billing App
 
 ## Features
 - Multi-tenant, multi-branch data model
-- SQLite (easy to migrate to Postgres/MySQL)
+- PostgreSQL-ready data layer with backward-compatible adapter
 - Repository, Service, Controller, Middleware patterns
 - JWT authentication and RBAC
 
@@ -21,10 +21,25 @@ Create a `.env` file in the `backend` directory (or export the variables in your
 
 | Variable | Description |
 | --- | --- |
-| `OPENAI_API_KEY` | **Required.** Server-side key used to call GPT models for insight summaries. |
-| `OPENAI_MODEL` | Optional override for the model id. Defaults to `gpt-5.1-codex-preview`, the currently supported GPT-5.1 tier for this backend. |
+| `DATABASE_URL` | **Required.** PostgreSQL connection string used by the pooled adapter. |
+| `OPENAI_API_KEY` | Optional. Enables GPT-based enhancement of AI insights. |
+| `OPENAI_MODEL` | Optional override for the model id. |
+| `API_BASE_URL` | Optional override for the smoke test target (defaults to `http://localhost:4000/api`). |
+| `SMOKE_USERNAME` | Username/email used for smoke-test authentication. |
+| `SMOKE_PASSWORD` | Password used for smoke-test authentication. |
 
 When `OPENAI_API_KEY` is absent the backend simply returns the rule-based insights without attempting the GPT enhancement step.
+
+### Smoke tests
+
+After deploying (or pointing to a running backend) you can hit the critical endpoints with:
+
+```sh
+cd backend
+SMOKE_USERNAME=<user> SMOKE_PASSWORD=<pass> API_BASE_URL=<https://api>/api npm run smoke
+```
+
+The script logs login timing plus the status/duration of invoices, customers, and inventory fetches. A non-zero exit code indicates a regression in one of the endpoints.
 
 ## Structure
 - `/models` - DB schema definitions
