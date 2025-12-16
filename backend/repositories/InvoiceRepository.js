@@ -44,8 +44,6 @@ export class InvoiceRepository {
       ]);
 
       return await this.findById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -57,7 +55,7 @@ export class InvoiceRepository {
           id, tenant_id as tenantId, branch_id as branchId, invoice_number as invoiceNumber,
           customer_id as customerId, customer_name as customerName, customer_email as customerEmail,
           customer_address as customerAddress, customer_phone as customerPhone,
-          issue_date as issueDate, due_date as dueDate, status, subtotal,
+          issue_date as issueDate, due_date as dueDate, status, items, subtotal,
           discount_type as discountType, discount_value as discountValue,
           discount_amount as discountAmount, tax_rate as taxRate, tax_amount as taxAmount,
           total_amount as totalAmount, paid_amount as paidAmount,
@@ -108,11 +106,10 @@ export class InvoiceRepository {
       const invoices = await db.all(query, params);
       return invoices.map(inv => ({
         ...inv,
+        items: inv.items ? JSON.parse(inv.items) : [],
         tags: inv.tags ? JSON.parse(inv.tags) : [],
         isRecurring: Boolean(inv.isRecurring)
       }));
-    } finally {
-      await db.close();
     }
   }
 
@@ -124,7 +121,7 @@ export class InvoiceRepository {
           id, tenant_id as tenantId, branch_id as branchId, invoice_number as invoiceNumber,
           customer_id as customerId, customer_name as customerName, customer_email as customerEmail,
           customer_address as customerAddress, customer_phone as customerPhone,
-          issue_date as issueDate, due_date as dueDate, status, subtotal,
+          issue_date as issueDate, due_date as dueDate, status, items, subtotal,
           discount_type as discountType, discount_value as discountValue,
           discount_amount as discountAmount, tax_rate as taxRate, tax_amount as taxAmount,
           total_amount as totalAmount, paid_amount as paidAmount,
@@ -139,12 +136,11 @@ export class InvoiceRepository {
       `, [id]);
 
       if (invoice) {
+        invoice.items = invoice.items ? JSON.parse(invoice.items) : [];
         invoice.tags = invoice.tags ? JSON.parse(invoice.tags) : [];
         invoice.isRecurring = Boolean(invoice.isRecurring);
       }
       return invoice;
-    } finally {
-      await db.close();
     }
   }
 
@@ -160,8 +156,6 @@ export class InvoiceRepository {
         invoice.tags = JSON.parse(invoice.tags);
       }
       return invoice;
-    } finally {
-      await db.close();
     }
   }
 
@@ -206,8 +200,6 @@ export class InvoiceRepository {
       );
 
       return await this.findById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -215,8 +207,6 @@ export class InvoiceRepository {
     const db = await getDb();
     try {
       await db.run('DELETE FROM invoices WHERE id = ?', [id]);
-    } finally {
-      await db.close();
     }
   }
 
@@ -230,8 +220,6 @@ export class InvoiceRepository {
       `, [status, new Date().toISOString(), id]);
 
       return await this.findById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -254,8 +242,6 @@ export class InvoiceRepository {
       query += ' ORDER BY due_date ASC';
 
       return await db.all(query, params);
-    } finally {
-      await db.close();
     }
   }
 
@@ -268,8 +254,6 @@ export class InvoiceRepository {
         AND (recurring_end_date IS NULL OR recurring_end_date > ?)
         ORDER BY created_at DESC
       `, [tenantId, new Date().toISOString()]);
-    } finally {
-      await db.close();
     }
   }
 
@@ -319,8 +303,6 @@ export class InvoiceRepository {
         totalOutstanding: stats.totalOutstanding || 0,
         averageInvoiceAmount: stats.averageInvoiceAmount || 0
       };
-    } finally {
-      await db.close();
     }
   }
 
@@ -330,8 +312,6 @@ export class InvoiceRepository {
     try {
       const invoices = await db.all('SELECT * FROM invoices WHERE branch_id = ?', [branchId]);
       return invoices;
-    } finally {
-      await db.close();
     }
   }
 
@@ -340,8 +320,6 @@ export class InvoiceRepository {
     try {
       const invoices = await db.all('SELECT * FROM invoices WHERE tenant_id = ?', [tenantId]);
       return invoices;
-    } finally {
-      await db.close();
     }
   }
 
@@ -384,8 +362,6 @@ export class InvoiceRepository {
       `, [amount, amount, amount, amount, new Date().toISOString(), invoiceId]);
 
       return await this.findPaymentById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -401,8 +377,6 @@ export class InvoiceRepository {
         FROM payments WHERE id = ?
       `, [id]);
       return payment;
-    } finally {
-      await db.close();
     }
   }
 
@@ -420,8 +394,6 @@ export class InvoiceRepository {
         ORDER BY payment_date DESC
       `, [invoiceId]);
       return payments;
-    } finally {
-      await db.close();
     }
   }
 
@@ -467,8 +439,6 @@ export class InvoiceRepository {
       }
 
       return await db.all(query, params);
-    } finally {
-      await db.close();
     }
   }
 
@@ -499,8 +469,6 @@ export class InvoiceRepository {
       );
 
       return await this.findPaymentById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -528,8 +496,6 @@ export class InvoiceRepository {
         WHERE id = ?
       `, [payment.amount, payment.amount, payment.amount, payment.amount, 
           new Date().toISOString(), payment.invoiceId]);
-    } finally {
-      await db.close();
     }
   }
 
@@ -567,8 +533,6 @@ export class InvoiceRepository {
         isDefault: Boolean(rate.isDefault),
         isActive: Boolean(rate.isActive)
       }));
-    } finally {
-      await db.close();
     }
   }
 
@@ -588,8 +552,6 @@ export class InvoiceRepository {
       ]);
 
       return await this.findTaxRateById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -609,8 +571,6 @@ export class InvoiceRepository {
         rate.isActive = Boolean(rate.isActive);
       }
       return rate;
-    } finally {
-      await db.close();
     }
   }
 
@@ -641,8 +601,6 @@ export class InvoiceRepository {
       );
 
       return await this.findTaxRateById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -668,8 +626,6 @@ export class InvoiceRepository {
         isDefault: Boolean(t.isDefault),
         customFields: t.customFields ? JSON.parse(t.customFields) : []
       }));
-    } finally {
-      await db.close();
     }
   }
 
@@ -693,8 +649,6 @@ export class InvoiceRepository {
       ]);
 
       return await this.findTemplateById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -714,8 +668,6 @@ export class InvoiceRepository {
         template.customFields = template.customFields ? JSON.parse(template.customFields) : [];
       }
       return template;
-    } finally {
-      await db.close();
     }
   }
 
@@ -749,8 +701,6 @@ export class InvoiceRepository {
       );
 
       return await this.findTemplateById(id);
-    } finally {
-      await db.close();
     }
   }
 }

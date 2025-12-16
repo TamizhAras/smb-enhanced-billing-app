@@ -56,8 +56,6 @@ export class CustomerRepository {
         ...c,
         tags: c.tags ? JSON.parse(c.tags) : []
       }));
-    } finally {
-      await db.close();
     }
   }
 
@@ -82,8 +80,6 @@ export class CustomerRepository {
         customer.tags = JSON.parse(customer.tags);
       }
       return customer;
-    } finally {
-      await db.close();
     }
   }
 
@@ -99,8 +95,6 @@ export class CustomerRepository {
         customer.tags = JSON.parse(customer.tags);
       }
       return customer;
-    } finally {
-      await db.close();
     }
   }
 
@@ -116,8 +110,6 @@ export class CustomerRepository {
         customer.tags = JSON.parse(customer.tags);
       }
       return customer;
-    } finally {
-      await db.close();
     }
   }
 
@@ -152,8 +144,6 @@ export class CustomerRepository {
       ]);
 
       return await this.findById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -193,8 +183,6 @@ export class CustomerRepository {
       );
 
       return await this.findById(id);
-    } finally {
-      await db.close();
     }
   }
 
@@ -202,8 +190,6 @@ export class CustomerRepository {
     const db = await getDb();
     try {
       await db.run('DELETE FROM customers WHERE id = ?', [id]);
-    } finally {
-      await db.close();
     }
   }
 
@@ -246,8 +232,6 @@ export class CustomerRepository {
         ...c,
         tags: c.tags ? JSON.parse(c.tags) : []
       }));
-    } finally {
-      await db.close();
     }
   }
 
@@ -274,8 +258,6 @@ export class CustomerRepository {
       params.push(limit);
 
       return await db.all(query, params);
-    } finally {
-      await db.close();
     }
   }
 
@@ -313,8 +295,6 @@ export class CustomerRepository {
         totalOrders: stats.totalOrders || 0,
         averageOrders: stats.averageOrders || 0
       };
-    } finally {
-      await db.close();
     }
   }
 
@@ -353,8 +333,6 @@ export class CustomerRepository {
       }
 
       return await this.findById(customerId);
-    } finally {
-      await db.close();
     }
   }
 }
