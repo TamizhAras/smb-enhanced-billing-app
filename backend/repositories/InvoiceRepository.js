@@ -461,7 +461,6 @@ export class InvoiceRepository {
         WHERE id = ?
       `, [payment.amount, payment.amount, payment.amount, payment.amount, 
           new Date().toISOString(), payment.invoiceId]);
-    }
   }
 
   // ============================================================================
@@ -536,30 +535,29 @@ export class InvoiceRepository {
   async updateTaxRate(id, updates) {
     const db = await getDb();
     const fields = [];
-      const values = [];
+    const values = [];
 
-      const fieldMap = {
-        name: 'name', rate: 'rate', description: 'description',
-        isDefault: 'is_default', isActive: 'is_active'
-      };
+    const fieldMap = {
+      name: 'name', rate: 'rate', description: 'description',
+      isDefault: 'is_default', isActive: 'is_active'
+    };
 
-      for (const [key, value] of Object.entries(updates)) {
-        const dbField = fieldMap[key] || key;
-        fields.push(`${dbField} = ?`);
-        values.push(key === 'isDefault' || key === 'isActive' ? (value ? 1 : 0) : value);
-      }
-
-      if (fields.length === 0) return;
-
-      values.push(id);
-
-      await db.run(
-        `UPDATE tax_rates SET ${fields.join(', ')} WHERE id = ?`,
-        values
-      );
-
-      return await this.findTaxRateById(id);
+    for (const [key, value] of Object.entries(updates)) {
+      const dbField = fieldMap[key] || key;
+      fields.push(`${dbField} = ?`);
+      values.push(key === 'isDefault' || key === 'isActive' ? (value ? 1 : 0) : value);
     }
+
+    if (fields.length === 0) return;
+
+    values.push(id);
+
+    await db.run(
+      `UPDATE tax_rates SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    return await this.findTaxRateById(id);
   }
 
   // ============================================================================
@@ -626,32 +624,31 @@ export class InvoiceRepository {
   async updateTemplate(id, updates) {
     const db = await getDb();
     const fields = [];
-      const values = [];
+    const values = [];
 
-      const fieldMap = {
-        name: 'name', description: 'description', layout: 'layout',
-        colorScheme: 'color_scheme', isDefault: 'is_default', customFields: 'custom_fields'
-      };
+    const fieldMap = {
+      name: 'name', description: 'description', layout: 'layout',
+      colorScheme: 'color_scheme', isDefault: 'is_default', customFields: 'custom_fields'
+    };
 
-      for (const [key, value] of Object.entries(updates)) {
-        const dbField = fieldMap[key] || key;
-        fields.push(`${dbField} = ?`);
-        values.push(
-          key === 'customFields' ? JSON.stringify(value) :
-          key === 'isDefault' ? (value ? 1 : 0) : value
-        );
-      }
-
-      if (fields.length === 0) return;
-
-      values.push(id);
-
-      await db.run(
-        `UPDATE invoice_templates SET ${fields.join(', ')} WHERE id = ?`,
-        values
+    for (const [key, value] of Object.entries(updates)) {
+      const dbField = fieldMap[key] || key;
+      fields.push(`${dbField} = ?`);
+      values.push(
+        key === 'customFields' ? JSON.stringify(value) :
+        key === 'isDefault' ? (value ? 1 : 0) : value
       );
-
-      return await this.findTemplateById(id);
     }
+
+    if (fields.length === 0) return;
+
+    values.push(id);
+
+    await db.run(
+      `UPDATE invoice_templates SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    return await this.findTemplateById(id);
   }
 }
