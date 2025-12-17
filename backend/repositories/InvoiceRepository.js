@@ -103,8 +103,8 @@ export class InvoiceRepository {
       const invoices = await db.all(query, params);
       return invoices.map(inv => ({
         ...inv,
-        items: inv.items ? JSON.parse(inv.items) : [],
-        tags: inv.tags ? JSON.parse(inv.tags) : [],
+        items: (inv.items && typeof inv.items === 'string') ? JSON.parse(inv.items) : (inv.items || []),
+        tags: (inv.tags && typeof inv.tags === 'string') ? JSON.parse(inv.tags) : (inv.tags || []),
         isRecurring: Boolean(inv.isRecurring)
       }));
   }

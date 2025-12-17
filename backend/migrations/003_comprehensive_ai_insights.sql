@@ -48,9 +48,9 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   status TEXT DEFAULT 'pending', -- pending, partial, received, cancelled
   total_amount REAL NOT NULL,
   expected_date TIMESTAMP,
-  received_date DATETIME,
+  received_date TIMESTAMP,
   notes TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id),
   FOREIGN KEY (vendor_id) REFERENCES vendors(id)
@@ -85,8 +85,8 @@ CREATE TABLE IF NOT EXISTS support_tickets (
   description TEXT,
   resolution TEXT,
   resolved_by TEXT,
-  resolved_at DATETIME,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id),
   FOREIGN KEY (customer_id) REFERENCES customers(id),

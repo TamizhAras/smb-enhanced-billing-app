@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS inventory (
   min_stock_level INTEGER DEFAULT 10,
   cost_price REAL DEFAULT 0,
   selling_price REAL DEFAULT 0,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id)
