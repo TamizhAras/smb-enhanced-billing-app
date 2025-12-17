@@ -49,20 +49,20 @@ export class InvoiceRepository {
     const db = await getDb();
     let query = `
         SELECT 
-          id, tenant_id as tenantId, branch_id as branchId, invoice_number as invoiceNumber,
-          customer_id as customerId, customer_name as customerName, customer_email as customerEmail,
-          customer_address as customerAddress, customer_phone as customerPhone,
-          issue_date as issueDate, due_date as dueDate, status, items, subtotal,
-          discount_type as discountType, discount_value as discountValue,
-          discount_amount as discountAmount, tax_rate as taxRate, tax_amount as taxAmount,
-          total_amount as totalAmount, paid_amount as paidAmount,
-          outstanding_amount as outstandingAmount, payment_terms as paymentTerms,
-          currency, exchange_rate as exchangeRate, is_recurring as isRecurring,
-          recurring_frequency as recurringFrequency, recurring_end_date as recurringEndDate,
-          parent_invoice_id as parentInvoiceId, notes, terms, footer_text as footerText,
-          template_id as templateId, sent_at as sentAt, reminders_sent as remindersSent,
-          last_reminder_date as lastReminderDate, po_number as poNumber,
-          project_id as projectId, tags, created_at as createdAt, updated_at as updatedAt
+          id, tenant_id as "tenantId", branch_id as "branchId", invoice_number as "invoiceNumber",
+          customer_id as "customerId", customer_name as "customerName", customer_email as "customerEmail",
+          customer_address as "customerAddress", customer_phone as "customerPhone",
+          issue_date as "issueDate", due_date as "dueDate", status, items, subtotal,
+          discount_type as "discountType", discount_value as "discountValue",
+          discount_amount as "discountAmount", tax_rate as "taxRate", tax_amount as "taxAmount",
+          total_amount as "totalAmount", paid_amount as "paidAmount",
+          outstanding_amount as "outstandingAmount", payment_terms as "paymentTerms",
+          currency, exchange_rate as "exchangeRate", is_recurring as "isRecurring",
+          recurring_frequency as "recurringFrequency", recurring_end_date as "recurringEndDate",
+          parent_invoice_id as "parentInvoiceId", notes, terms, footer_text as "footerText",
+          template_id as "templateId", sent_at as "sentAt", reminders_sent as "remindersSent",
+          last_reminder_date as "lastReminderDate", po_number as "poNumber",
+          project_id as "projectId", tags, created_at as "createdAt", updated_at as "updatedAt"
         FROM invoices
         WHERE tenant_id = ?
       `;
@@ -135,20 +135,20 @@ export class InvoiceRepository {
     const db = await getDb();
     const invoice = await db.get(`
         SELECT 
-          id, tenant_id as tenantId, branch_id as branchId, invoice_number as invoiceNumber,
-          customer_id as customerId, customer_name as customerName, customer_email as customerEmail,
-          customer_address as customerAddress, customer_phone as customerPhone,
-          issue_date as issueDate, due_date as dueDate, status, items, subtotal,
-          discount_type as discountType, discount_value as discountValue,
-          discount_amount as discountAmount, tax_rate as taxRate, tax_amount as taxAmount,
-          total_amount as totalAmount, paid_amount as paidAmount,
-          outstanding_amount as outstandingAmount, payment_terms as paymentTerms,
-          currency, exchange_rate as exchangeRate, is_recurring as isRecurring,
-          recurring_frequency as recurringFrequency, recurring_end_date as recurringEndDate,
-          parent_invoice_id as parentInvoiceId, notes, terms, footer_text as footerText,
-          template_id as templateId, sent_at as sentAt, reminders_sent as remindersSent,
-          last_reminder_date as lastReminderDate, po_number as poNumber,
-          project_id as projectId, tags, created_at as createdAt, updated_at as updatedAt
+          id, tenant_id as "tenantId", branch_id as "branchId", invoice_number as "invoiceNumber",
+          customer_id as "customerId", customer_name as "customerName", customer_email as "customerEmail",
+          customer_address as "customerAddress", customer_phone as "customerPhone",
+          issue_date as "issueDate", due_date as "dueDate", status, items, subtotal,
+          discount_type as "discountType", discount_value as "discountValue",
+          discount_amount as "discountAmount", tax_rate as "taxRate", tax_amount as "taxAmount",
+          total_amount as "totalAmount", paid_amount as "paidAmount",
+          outstanding_amount as "outstandingAmount", payment_terms as "paymentTerms",
+          currency, exchange_rate as "exchangeRate", is_recurring as "isRecurring",
+          recurring_frequency as "recurringFrequency", recurring_end_date as "recurringEndDate",
+          parent_invoice_id as "parentInvoiceId", notes, terms, footer_text as "footerText",
+          template_id as "templateId", sent_at as "sentAt", reminders_sent as "remindersSent",
+          last_reminder_date as "lastReminderDate", po_number as "poNumber",
+          project_id as "projectId", tags, created_at as "createdAt", updated_at as "updatedAt"
         FROM invoices WHERE id = ?
       `, [id]);
 
@@ -186,13 +186,50 @@ export class InvoiceRepository {
         WHERE invoice_number = ? AND tenant_id = ?
       `, [invoiceNumber, tenantId]);
       
-      if (invoice && invoice.tags) {
-        try {
-          invoice.tags = (typeof invoice.tags === 'string' && invoice.tags !== 'null' && invoice.tags.trim() !== '') 
-            ? JSON.parse(invoice.tags) 
-            : [];
-        } catch (e) {
-          invoice.tags = [];
+      if (invoice) {
+        // Map snake_case to camelCase manually since we used SELECT *
+        invoice.tenantId = invoice.tenant_id;
+        invoice.branchId = invoice.branch_id;
+        invoice.invoiceNumber = invoice.invoice_number;
+        invoice.customerId = invoice.customer_id;
+        invoice.customerName = invoice.customer_name;
+        invoice.customerEmail = invoice.customer_email;
+        invoice.customerAddress = invoice.customer_address;
+        invoice.customerPhone = invoice.customer_phone;
+        invoice.issueDate = invoice.issue_date;
+        invoice.dueDate = invoice.due_date;
+        invoice.discountType = invoice.discount_type;
+        invoice.discountValue = invoice.discount_value;
+        invoice.discountAmount = invoice.discount_amount;
+        invoice.taxRate = invoice.tax_rate;
+        invoice.taxAmount = invoice.tax_amount;
+        invoice.totalAmount = invoice.total_amount;
+        invoice.paidAmount = invoice.paid_amount;
+        invoice.outstandingAmount = invoice.outstanding_amount;
+        invoice.paymentTerms = invoice.payment_terms;
+        invoice.exchangeRate = invoice.exchange_rate;
+        invoice.isRecurring = Boolean(invoice.is_recurring);
+        invoice.recurringFrequency = invoice.recurring_frequency;
+        invoice.recurringEndDate = invoice.recurring_end_date;
+        invoice.parentInvoiceId = invoice.parent_invoice_id;
+        invoice.footerText = invoice.footer_text;
+        invoice.templateId = invoice.template_id;
+        invoice.sentAt = invoice.sent_at;
+        invoice.remindersSent = invoice.reminders_sent;
+        invoice.lastReminderDate = invoice.last_reminder_date;
+        invoice.poNumber = invoice.po_number;
+        invoice.projectId = invoice.project_id;
+        invoice.createdAt = invoice.created_at;
+        invoice.updatedAt = invoice.updated_at;
+
+        if (invoice.tags) {
+          try {
+            invoice.tags = (typeof invoice.tags === 'string' && invoice.tags !== 'null' && invoice.tags.trim() !== '') 
+              ? JSON.parse(invoice.tags) 
+              : [];
+          } catch (e) {
+            invoice.tags = [];
+          }
         }
       }
       return invoice;

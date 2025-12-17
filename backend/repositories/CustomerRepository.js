@@ -9,15 +9,15 @@ export class CustomerRepository {
     const db = await getDb();
     let query = `
         SELECT 
-          id, name, email, phone, address, city, state, postal_code as postalCode,
-          country, gst_number as gstNumber, pan_number as panNumber,
-          type, category, tags, total_spent as totalSpent, total_orders as totalOrders,
-          average_order_value as averageOrderValue, last_order_date as lastOrderDate,
-          credit_limit as creditLimit, payment_terms as paymentTerms, status,
-          preferred_payment_method as preferredPaymentMethod, notes,
-          acquisition_source as acquisitionSource, referred_by as referredBy,
-          tenant_id as tenantId, branch_id as branchId,
-          created_at as createdAt, updated_at as updatedAt
+          id, name, email, phone, address, city, state, postal_code as "postalCode",
+          country, gst_number as "gstNumber", pan_number as "panNumber",
+          type, category, tags, total_spent as "totalSpent", total_orders as "totalOrders",
+          average_order_value as "averageOrderValue", last_order_date as "lastOrderDate",
+          credit_limit as "creditLimit", payment_terms as "paymentTerms", status,
+          preferred_payment_method as "preferredPaymentMethod", notes,
+          acquisition_source as "acquisitionSource", referred_by as "referredBy",
+          tenant_id as "tenantId", branch_id as "branchId",
+          created_at as "createdAt", updated_at as "updatedAt"
         FROM customers
         WHERE tenant_id = ?
       `;
@@ -74,15 +74,15 @@ export class CustomerRepository {
     const db = await getDb();
     const customer = await db.get(`
         SELECT 
-          id, name, email, phone, address, city, state, postal_code as postalCode,
-          country, gst_number as gstNumber, pan_number as panNumber,
-          type, category, tags, total_spent as totalSpent, total_orders as totalOrders,
-          average_order_value as averageOrderValue, last_order_date as lastOrderDate,
-          credit_limit as creditLimit, payment_terms as paymentTerms, status,
-          preferred_payment_method as preferredPaymentMethod, notes,
-          acquisition_source as acquisitionSource, referred_by as referredBy,
-          tenant_id as tenantId, branch_id as branchId,
-          created_at as createdAt, updated_at as updatedAt
+          id, name, email, phone, address, city, state, postal_code as "postalCode",
+          country, gst_number as "gstNumber", pan_number as "panNumber",
+          type, category, tags, total_spent as "totalSpent", total_orders as "totalOrders",
+          average_order_value as "averageOrderValue", last_order_date as "lastOrderDate",
+          credit_limit as "creditLimit", payment_terms as "paymentTerms", status,
+          preferred_payment_method as "preferredPaymentMethod", notes,
+          acquisition_source as "acquisitionSource", referred_by as "referredBy",
+          tenant_id as "tenantId", branch_id as "branchId",
+          created_at as "createdAt", updated_at as "updatedAt"
         FROM customers WHERE id = ?
       `, [id]);
 
@@ -214,15 +214,15 @@ export class CustomerRepository {
     const db = await getDb();
     let query = `
         SELECT 
-          id, name, email, phone, address, city, state, postal_code as postalCode,
-          country, gst_number as gstNumber, pan_number as panNumber,
-          type, category, tags, total_spent as totalSpent, total_orders as totalOrders,
-          average_order_value as averageOrderValue, last_order_date as lastOrderDate,
-          credit_limit as creditLimit, payment_terms as paymentTerms, status,
-          preferred_payment_method as preferredPaymentMethod, notes,
-          acquisition_source as acquisitionSource, referred_by as referredBy,
-          tenant_id as tenantId, branch_id as branchId,
-          created_at as createdAt, updated_at as updatedAt
+          id, name, email, phone, address, city, state, postal_code as "postalCode",
+          country, gst_number as "gstNumber", pan_number as "panNumber",
+          type, category, tags, total_spent as "totalSpent", total_orders as "totalOrders",
+          average_order_value as "averageOrderValue", last_order_date as "lastOrderDate",
+          credit_limit as "creditLimit", payment_terms as "paymentTerms", status,
+          preferred_payment_method as "preferredPaymentMethod", notes,
+          acquisition_source as "acquisitionSource", referred_by as "referredBy",
+          tenant_id as "tenantId", branch_id as "branchId",
+          created_at as "createdAt", updated_at as "updatedAt"
         FROM customers
         WHERE tenant_id = ?
         AND (
@@ -267,9 +267,9 @@ export class CustomerRepository {
     const db = await getDb();
     let query = `
         SELECT 
-          id, name, email, phone, total_spent as totalSpent, 
-          total_orders as totalOrders, last_order_date as lastOrderDate,
-          status, tenant_id as tenantId, branch_id as branchId
+          id, name, email, phone, total_spent as "totalSpent", 
+          total_orders as "totalOrders", last_order_date as "lastOrderDate",
+          status, tenant_id as "tenantId", branch_id as "branchId"
         FROM customers
         WHERE tenant_id = ?
         AND status = 'active'
