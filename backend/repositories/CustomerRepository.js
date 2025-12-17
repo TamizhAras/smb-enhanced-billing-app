@@ -51,10 +51,23 @@ export class CustomerRepository {
       }
 
       const customers = await db.all(query, params);
-      return customers.map(c => ({
-        ...c,
-        tags: c.tags ? JSON.parse(c.tags) : []
-      }));
+      return customers.map(c => {
+        let tags = [];
+        if (c.tags) {
+          try {
+            tags = (typeof c.tags === 'string' && c.tags !== 'null' && c.tags.trim() !== '') 
+              ? JSON.parse(c.tags) 
+              : [];
+          } catch (e) {
+            console.warn('Failed to parse customer tags:', c.tags);
+            tags = [];
+          }
+        }
+        return {
+          ...c,
+          tags
+        };
+      });
   }
 
   async findById(id) {
@@ -231,10 +244,23 @@ export class CustomerRepository {
       query += ' ORDER BY name ASC LIMIT 50';
 
       const customers = await db.all(query, params);
-      return customers.map(c => ({
-        ...c,
-        tags: c.tags ? JSON.parse(c.tags) : []
-      }));
+      return customers.map(c => {
+        let tags = [];
+        if (c.tags) {
+          try {
+            tags = (typeof c.tags === 'string' && c.tags !== 'null' && c.tags.trim() !== '') 
+              ? JSON.parse(c.tags) 
+              : [];
+          } catch (e) {
+            console.warn('Failed to parse customer tags:', c.tags);
+            tags = [];
+          }
+        }
+        return {
+          ...c,
+          tags
+        };
+      });
   }
 
   async getTopCustomers(tenantId, branchId = null, limit = 10) {

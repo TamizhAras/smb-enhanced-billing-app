@@ -187,7 +187,13 @@ export class InvoiceRepository {
       `, [invoiceNumber, tenantId]);
       
       if (invoice && invoice.tags) {
-        invoice.tags = JSON.parse(invoice.tags);
+        try {
+          invoice.tags = (typeof invoice.tags === 'string' && invoice.tags !== 'null' && invoice.tags.trim() !== '') 
+            ? JSON.parse(invoice.tags) 
+            : [];
+        } catch (e) {
+          invoice.tags = [];
+        }
       }
       return invoice;
   }
@@ -617,11 +623,23 @@ export class InvoiceRepository {
         ORDER BY is_default DESC, name ASC
       `, [tenantId]);
 
-      return templates.map(t => ({
-        ...t,
-        isDefault: Boolean(t.isDefault),
-        customFields: t.customFields ? JSON.parse(t.customFields) : []
-      }));
+      return templates.map(t => {
+        let customFields = [];
+        if (t.customFields) {
+          try {
+            customFields = (typeof t.customFields === 'string' && t.customFields !== 'null' && t.customFields.trim() !== '') 
+              ? JSON.parse(t.customFields) 
+              : [];
+          } catch (e) {
+            customFields = [];
+          }
+        }
+        return {
+          ...t,
+          isDefault: Boolean(t.isDefault),
+          customFields
+        };
+      });
   }
 
   async createTemplate(templateData) {
@@ -657,7 +675,13 @@ export class InvoiceRepository {
 
       if (template) {
         template.isDefault = Boolean(template.isDefault);
-        template.customFields = template.customFields ? JSON.parse(template.customFields) : [];
+        try {
+          template.customFields = (template.customFields && typeof template.customFields === 'string' && template.customFields !== 'null' && template.customFields.trim() !== '') 
+            ? JSON.parse(template.customFields) 
+            : [];
+        } catch (e) {
+          template.customFields = [];
+        }
       }
       return template;
   }
