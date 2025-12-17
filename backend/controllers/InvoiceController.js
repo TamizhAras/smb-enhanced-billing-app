@@ -131,6 +131,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 
     // Check tenant access
     if (existing.tenantId !== req.user.tenantId) {
+      console.warn(`Access denied for delete invoice ${id}. Invoice tenant: ${existing.tenantId}, User tenant: ${req.user.tenantId}`);
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 

@@ -42,7 +42,8 @@ async function apiFetch<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error(error.message || `API Error: ${response.status}`);
+    // Check for 'message' (standard) or 'error' (backend convention)
+    throw new Error(error.message || error.error || `API Error: ${response.status}`);
   }
 
   return response.json();
