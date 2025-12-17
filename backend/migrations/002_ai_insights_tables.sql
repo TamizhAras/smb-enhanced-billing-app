@@ -10,9 +10,7 @@ CREATE TABLE IF NOT EXISTS customers (
   email TEXT,
   phone TEXT,
   address TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-  FOREIGN KEY (branch_id) REFERENCES branches(id)
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Inventory table
@@ -28,9 +26,7 @@ CREATE TABLE IF NOT EXISTS inventory (
   cost_price REAL DEFAULT 0,
   selling_price REAL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-  FOREIGN KEY (branch_id) REFERENCES branches(id)
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Invoice items table (for line items in invoices)
@@ -42,27 +38,55 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   quantity INTEGER DEFAULT 1,
   unit_price REAL NOT NULL,
   total REAL NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (invoice_id) REFERENCES invoices(id),
-  FOREIGN KEY (item_id) REFERENCES inventory(id)
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Feedback table
 CREATE TABLE IF NOT EXISTS feedback (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
-  branch_id TEXT,
   customer_id TEXT,
-  rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+  rating INTEGER CHECK(rating >= 1 AND rating <= 5),
   comment TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-  FOREIGN KEY (branch_id) REFERENCES branches(id),
-  FOREIGN KEY (customer_id) REFERENCES customers(id)
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for better query performance
-CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_inventory_tenant ON inventory(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON invoice_items(invoice_id);
-CREATE INDEX IF NOT EXISTS idx_feedback_tenant ON feedback(tenant_id);
+-- Safely add Foreign Keys
+DO $$
+BEGIN
+    -- Customers FKs
+    BEGIN
+        ALTER TABLE customers ADD CONSTRAINT customers_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; WHEN OTHERS THEN RAISE NOTICE 'Could not add FK customers_tenant_id_fkey: %', SQLERRM; END;
+
+    BEGIN
+        ALTER TABLE customers ADD CONSTRAINT customers_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES branches(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; WHEN OTHERS THEN RAISE NOTICE 'Could not add FK customers_branch_id_fkey: %', SQLERRM; END;
+
+    -- Inventory FKs
+    BEGIN
+        ALTER TABLE inventory ADD CONSTRAINT inventory_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; WHEN OTHERS THEN RAISE NOTICE 'Could not add FK inventory_tenant_id_fkey: %', SQLERRM; END;
+
+    BEGIN
+        ALTER TABLE inventory ADD CONSTRAINT inventory_branch_id_fkey FOREIGN KEY (branch_id) REFERENCES branches(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; WHEN OTHERS THEN RAISE NOTICE 'Could not add FK inventory_branch_id_fkey: %', SQLERRM; END;
+
+    -- Invoice Items FKs
+    BEGIN
+        ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_invoice_id_fkey FOREIGN KEY (invoice_id) REFERENCES invoices(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; WHEN OTHERS THEN RAISE NOTICE 'Could not add FK invoice_items_invoice_id_fkey: %', SQLERRM; END;
+
+    BEGIN
+        ALTER TABLE invoice_items ADD CONSTRAINT invoice_items_item_id_fkey FOREIGN KEY (item_id) REFERENCES inventory(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; WHEN OTHERS THEN RAISE NOTICE 'Could not add FK invoice_items_item_id_fkey: %', SQLERRM; END;
+
+    -- Feedback FKs
+    BEGIN
+        ALTER TABLE feedback ADD CONSTRAINT feedback_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; WHEN OTHERS THEN RAISE NOTICE 'Could not add FK feedback_tenant_id_fkey: %', SQLERRM; END;
+
+    BEGIN
+        ALTER TABLE feedback ADD CONSTRAINT feedback_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES customers(id);
+    EXCEPTION WHEN duplicate_object THEN NULL; WHEN OTHERS THEN RAISE NOTICE 'Could not add FK feedback_customer_id_fkey: %', SQLERRM; END;
+END $$;
