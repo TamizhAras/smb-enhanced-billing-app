@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS customers (
   email TEXT,
   phone TEXT,
   address TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id)
 );
@@ -33,9 +33,6 @@ CREATE TABLE IF NOT EXISTS inventory (
   FOREIGN KEY (branch_id) REFERENCES branches(id)
 );
 
--- Add missing columns to invoices table if they don't exist
--- SQLite doesn't support IF NOT EXISTS for columns, so we use a workaround
-
 -- Invoice items table (for line items in invoices)
 CREATE TABLE IF NOT EXISTS invoice_items (
   id TEXT PRIMARY KEY,
@@ -45,7 +42,7 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   quantity INTEGER DEFAULT 1,
   unit_price REAL NOT NULL,
   total REAL NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (invoice_id) REFERENCES invoices(id),
   FOREIGN KEY (item_id) REFERENCES inventory(id)
 );
@@ -58,7 +55,7 @@ CREATE TABLE IF NOT EXISTS feedback (
   customer_id TEXT,
   rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
   comment TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id),
   FOREIGN KEY (customer_id) REFERENCES customers(id)

@@ -101,12 +101,34 @@ export class InvoiceRepository {
       }
 
       const invoices = await db.all(query, params);
-      return invoices.map(inv => ({
-        ...inv,
-        items: (inv.items && typeof inv.items === 'string') ? JSON.parse(inv.items) : (inv.items || []),
-        tags: (inv.tags && typeof inv.tags === 'string') ? JSON.parse(inv.tags) : (inv.tags || []),
-        isRecurring: Boolean(inv.isRecurring)
-      }));
+      return invoices.map(inv => {
+        let items = [];
+        if (inv.items) {
+          try {
+            items = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
+          } catch (e) {
+            console.warn('Failed to parse invoice items:', inv.items);
+            items = [];
+          }
+        }
+        
+        let tags = [];
+        if (inv.tags) {
+          try {
+            tags = typeof inv.tags === 'string' ? JSON.parse(inv.tags) : inv.tags;
+          } catch (e) {
+            console.warn('Failed to parse invoice tags:', inv.tags);
+            tags = [];
+          }
+        }
+
+        return {
+          ...inv,
+          items,
+          tags,
+          isRecurring: Boolean(inv.isRecurring)
+        };
+      });
   }
 
   async findById(id) {

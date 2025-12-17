@@ -67,166 +67,407 @@ CREATE TABLE IF NOT EXISTS company_settings (
 -- We'll use a safer approach: check if column exists before adding
 
 -- For invoices table, we need to add many columns
--- SQLite doesn't support ALTER TABLE ... ADD COLUMN IF NOT EXISTS
--- So we'll need to create a new table and migrate data
+-- Postgres supports IF NOT EXISTS for columns in recent versions, but to be safe we use DO block
 
--- First, let's check what we have and create a comprehensive invoices table
+DO -- Enhanced Schema for Comprehensive AI Insights
+-- Migration 003: Extended tables for full AI analysis
 
--- Rename old table
-ALTER TABLE invoices RENAME TO invoices_old;
+-- ============================================
+-- STAFF & PERFORMANCE TRACKING
+-- ============================================
 
--- Create new invoices table with all required columns
-CREATE TABLE invoices (
+-- Staff activity log (for performance tracking)
+CREATE TABLE IF NOT EXISTS staff_activities (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
   branch_id TEXT NOT NULL,
-  invoice_number TEXT UNIQUE NOT NULL,
-  
-  -- Customer info
-  customer_id TEXT,
-  customer_name TEXT,
-  customer_email TEXT,
-  customer_phone TEXT,
-  customer_address TEXT,
-  customer_city TEXT,
-  customer_state TEXT,
-  customer_pincode TEXT,
-  customer_gst_number TEXT,
-  
-  -- Dates
-  issue_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  due_date DATETIME NOT NULL,
-  
-  -- Status
-  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'paid', 'partial', 'overdue', 'cancelled')),
-  
-  -- Items (JSON string)
-  items TEXT NOT NULL, -- JSON array of invoice items
-  
-  -- Amounts
-  subtotal REAL NOT NULL DEFAULT 0,
-  tax_amount REAL NOT NULL DEFAULT 0,
-  discount_amount REAL DEFAULT 0,
-  total_amount REAL NOT NULL DEFAULT 0,
-  paid_amount REAL DEFAULT 0,
-  outstanding_amount REAL DEFAULT 0,
-  
-  -- Additional fields
-  notes TEXT,
-  terms TEXT,
-  payment_method TEXT,
-  
-  -- Recurring invoice fields
-  is_recurring INTEGER DEFAULT 0,
-  recurring_frequency TEXT CHECK(recurring_frequency IN ('weekly', 'monthly', 'quarterly', 'yearly')),
-  recurring_end_date DATETIME,
-  parent_invoice_id TEXT,
-  
-  -- Communication fields
-  sent_at DATETIME,
-  reminders_sent INTEGER DEFAULT 0,
-  
-  -- Metadata
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  
+  user_id TEXT NOT NULL,
+  activity_type TEXT NOT NULL, -- 'sale', 'refund', 'discount', 'customer_add', 'inventory_update'
+  reference_id TEXT, -- invoice_id, customer_id, etc.
+  amount REAL DEFAULT 0,
+  metadata TEXT, -- JSON for additional data
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id),
-  FOREIGN KEY (parent_invoice_id) REFERENCES invoices(id)
+  FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
--- Migrate data from old table to new table
-INSERT INTO invoices (
-  id, tenant_id, branch_id, invoice_number, customer_id, customer_name,
-  issue_date, due_date, status, items, total_amount, created_at
-)
-SELECT 
-  id,
-  tenant_id,
-  branch_id,
-  COALESCE(invoice_number, 'INV-' || id),
-  customer_id,
-  customer_name,
-  COALESCE(created_at, CURRENT_TIMESTAMP),
-  COALESCE(due_date, datetime(CURRENT_TIMESTAMP, '+30 days')),
-  COALESCE(status, 'pending'),
-  '[]', -- empty items array for now
-  COALESCE(total_amount, amount, 0),
-  COALESCE(created_at, CURRENT_TIMESTAMP)
-FROM invoices_old;
+-- ============================================
+-- VENDOR MANAGEMENT
+-- ============================================
 
--- Drop old table
-DROP TABLE invoices_old;
-
--- Now handle customers table
-ALTER TABLE customers RENAME TO customers_old;
-
-CREATE TABLE customers (
+CREATE TABLE IF NOT EXISTS vendors (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
-  branch_id TEXT,
   name TEXT NOT NULL,
+  contact_person TEXT,
   email TEXT,
   phone TEXT,
   address TEXT,
-  city TEXT,
-  state TEXT,
-  pincode TEXT,
-  gst_number TEXT,
-  total_spent REAL DEFAULT 0,
-  outstanding_amount REAL DEFAULT 0,
-  last_purchase_date DATETIME,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  payment_terms INTEGER DEFAULT 30, -- days
+  rating REAL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  vendor_id TEXT NOT NULL,
+  po_number TEXT NOT NULL,
+  status TEXT DEFAULT 'pending', -- pending, partial, received, cancelled
+  total_amount REAL NOT NULL,
+  expected_date TIMESTAMP,
+  received_date TIMESTAMP,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id),
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+  id TEXT PRIMARY KEY,
+  po_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  quantity_ordered INTEGER NOT NULL,
+  quantity_received INTEGER DEFAULT 0,
+  unit_price REAL NOT NULL,
+  total REAL NOT NULL,
+  FOREIGN KEY (po_id) REFERENCES purchase_orders(id),
+  FOREIGN KEY (item_id) REFERENCES inventory(id)
+);
+
+-- ============================================
+-- SUPPORT & COMPLAINTS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT,
+  customer_id TEXT,
+  invoice_id TEXT,
+  category TEXT, -- 'product_quality', 'delivery', 'billing', 'service', 'refund', 'other'
+  priority TEXT DEFAULT 'medium', -- low, medium, high, critical
+  status TEXT DEFAULT 'open', -- open, in_progress, resolved, closed
+  subject TEXT NOT NULL,
+  description TEXT,
+  resolution TEXT,
+  resolved_by TEXT,
+  resolved_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id),
+  FOREIGN KEY (customer_id) REFERENCES customers(id),
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+);
+
+-- ============================================
+-- EXPENSES TRACKING
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  category TEXT NOT NULL, -- rent, utilities, salary, marketing, etc.
+  amount REAL NOT NULL,
+  description TEXT,
+  date TIMESTAMP NOT NULL,
+  payment_method TEXT,
+  receipt_url TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id)
 );
 
--- Migrate customers data
-INSERT INTO customers (id, tenant_id, branch_id, name, email, phone, address, created_at)
-SELECT id, tenant_id, branch_id, name, email, phone, address, created_at
-FROM customers_old;
+-- ============================================
+-- CUSTOMER INSIGHTS
+-- ============================================
 
-DROP TABLE customers_old;
-
--- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_invoices_tenant ON invoices(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_branch ON invoices(branch_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
-CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
-CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
-CREATE INDEX IF NOT EXISTS idx_invoices_invoice_number ON invoices(invoice_number);
-
-CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
-CREATE INDEX IF NOT EXISTS idx_payments_tenant ON payments(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_payments_customer ON payments(customer_id);
-
-CREATE INDEX IF NOT EXISTS idx_customers_tenant ON customers(tenant_id);
-CREATE INDEX IF NOT EXISTS idx_customers_branch ON customers(branch_id);
-CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
-CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
-
--- Insert default data for demo
--- Note: This assumes tenant_id '1' exists. Adjust as needed.
-
--- Default tax rates
-INSERT INTO tax_rates (name, rate, description, tenant_id) VALUES
-('GST 0%', 0, 'Zero rated GST', '1'),
-('GST 5%', 5, 'Reduced GST rate', '1'),
-('GST 12%', 12, 'Standard GST rate', '1'),
-('GST 18%', 18, 'Higher GST rate', '1'),
-('GST 28%', 28, 'Luxury goods GST', '1');
-
--- Default invoice templates
-INSERT INTO invoice_templates (name, description, template, is_default, tenant_id) VALUES
-('Standard', 'Standard invoice template', '{}', 1, '1'),
-('Modern', 'Modern invoice template with color', '{}', 0, '1'),
-('Minimal', 'Minimal invoice template', '{}', 0, '1');
-
--- Default company settings
-INSERT INTO company_settings (
-  company_name, default_currency, default_tax_rate, 
-  invoice_prefix, invoice_start_number, tenant_id
-) VALUES (
-  'Your Company', 'INR', 18, 'INV', 1, '1'
+CREATE TABLE IF NOT EXISTS customer_segments (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  criteria TEXT NOT NULL, -- JSON defining segment rules
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
+
+CREATE TABLE IF NOT EXISTS customer_feedback (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  customer_id TEXT,
+  rating INTEGER CHECK(rating >= 1 AND rating <= 5),
+  comment TEXT,
+  source TEXT, -- 'sms', 'email', 'kiosk'
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id),
+  FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+-- ============================================
+-- AI PREDICTIONS & LOGS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS ai_predictions (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT,
+  prediction_type TEXT NOT NULL, -- 'sales_forecast', 'churn_risk', 'inventory_restock'
+  target_date TIMESTAMP,
+  predicted_value REAL,
+  confidence_score REAL,
+  factors TEXT, -- JSON explanation
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_logs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  model_used TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  cost REAL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'invoice_number') THEN
+        ALTER TABLE invoices ADD COLUMN invoice_number TEXT;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'customer_id') THEN
+        ALTER TABLE invoices ADD COLUMN customer_id TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'customer_name') THEN
+        ALTER TABLE invoices ADD COLUMN customer_name TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'customer_email') THEN
+        ALTER TABLE invoices ADD COLUMN customer_email TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'customer_phone') THEN
+        ALTER TABLE invoices ADD COLUMN customer_phone TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'customer_address') THEN
+        ALTER TABLE invoices ADD COLUMN customer_address TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'issue_date') THEN
+        ALTER TABLE invoices ADD COLUMN issue_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'due_date') THEN
+        ALTER TABLE invoices ADD COLUMN due_date TIMESTAMP;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'subtotal') THEN
+        ALTER TABLE invoices ADD COLUMN subtotal REAL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'tax_amount') THEN
+        ALTER TABLE invoices ADD COLUMN tax_amount REAL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'total_amount') THEN
+        ALTER TABLE invoices ADD COLUMN total_amount REAL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'paid_amount') THEN
+        ALTER TABLE invoices ADD COLUMN paid_amount REAL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'outstanding_amount') THEN
+        ALTER TABLE invoices ADD COLUMN outstanding_amount REAL DEFAULT 0;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'notes') THEN
+        ALTER TABLE invoices ADD COLUMN notes TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'invoices' AND column_name = 'updated_at') THEN
+        ALTER TABLE invoices ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+    END IF;
+END -- Enhanced Schema for Comprehensive AI Insights
+-- Migration 003: Extended tables for full AI analysis
+
+-- ============================================
+-- STAFF & PERFORMANCE TRACKING
+-- ============================================
+
+-- Staff activity log (for performance tracking)
+CREATE TABLE IF NOT EXISTS staff_activities (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  activity_type TEXT NOT NULL, -- 'sale', 'refund', 'discount', 'customer_add', 'inventory_update'
+  reference_id TEXT, -- invoice_id, customer_id, etc.
+  amount REAL DEFAULT 0,
+  metadata TEXT, -- JSON for additional data
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id),
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- ============================================
+-- VENDOR MANAGEMENT
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS vendors (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  contact_person TEXT,
+  email TEXT,
+  phone TEXT,
+  address TEXT,
+  payment_terms INTEGER DEFAULT 30, -- days
+  rating REAL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  vendor_id TEXT NOT NULL,
+  po_number TEXT NOT NULL,
+  status TEXT DEFAULT 'pending', -- pending, partial, received, cancelled
+  total_amount REAL NOT NULL,
+  expected_date TIMESTAMP,
+  received_date TIMESTAMP,
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id),
+  FOREIGN KEY (vendor_id) REFERENCES vendors(id)
+);
+
+CREATE TABLE IF NOT EXISTS purchase_order_items (
+  id TEXT PRIMARY KEY,
+  po_id TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  quantity_ordered INTEGER NOT NULL,
+  quantity_received INTEGER DEFAULT 0,
+  unit_price REAL NOT NULL,
+  total REAL NOT NULL,
+  FOREIGN KEY (po_id) REFERENCES purchase_orders(id),
+  FOREIGN KEY (item_id) REFERENCES inventory(id)
+);
+
+-- ============================================
+-- SUPPORT & COMPLAINTS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT,
+  customer_id TEXT,
+  invoice_id TEXT,
+  category TEXT, -- 'product_quality', 'delivery', 'billing', 'service', 'refund', 'other'
+  priority TEXT DEFAULT 'medium', -- low, medium, high, critical
+  status TEXT DEFAULT 'open', -- open, in_progress, resolved, closed
+  subject TEXT NOT NULL,
+  description TEXT,
+  resolution TEXT,
+  resolved_by TEXT,
+  resolved_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id),
+  FOREIGN KEY (customer_id) REFERENCES customers(id),
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+);
+
+-- ============================================
+-- EXPENSES TRACKING
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS expenses (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  category TEXT NOT NULL, -- rent, utilities, salary, marketing, etc.
+  amount REAL NOT NULL,
+  description TEXT,
+  date TIMESTAMP NOT NULL,
+  payment_method TEXT,
+  receipt_url TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+-- ============================================
+-- CUSTOMER INSIGHTS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS customer_segments (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  criteria TEXT NOT NULL, -- JSON defining segment rules
+  description TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);
+
+CREATE TABLE IF NOT EXISTS customer_feedback (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT NOT NULL,
+  customer_id TEXT,
+  rating INTEGER CHECK(rating >= 1 AND rating <= 5),
+  comment TEXT,
+  source TEXT, -- 'sms', 'email', 'kiosk'
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id),
+  FOREIGN KEY (customer_id) REFERENCES customers(id)
+);
+
+-- ============================================
+-- AI PREDICTIONS & LOGS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS ai_predictions (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  branch_id TEXT,
+  prediction_type TEXT NOT NULL, -- 'sales_forecast', 'churn_risk', 'inventory_restock'
+  target_date TIMESTAMP,
+  predicted_value REAL,
+  confidence_score REAL,
+  factors TEXT, -- JSON explanation
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_logs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  model_used TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  cost REAL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+);;
