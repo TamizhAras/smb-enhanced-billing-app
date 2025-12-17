@@ -4,7 +4,7 @@
 -- First, let's create the new tables (if they don't exist)
 
 CREATE TABLE IF NOT EXISTS payments (
-  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  id TEXT PRIMARY KEY,
   invoice_id TEXT NOT NULL,
   invoice_number TEXT NOT NULL,
   customer_id TEXT,
@@ -13,39 +13,39 @@ CREATE TABLE IF NOT EXISTS payments (
   method TEXT NOT NULL CHECK(method IN ('cash', 'card', 'bank_transfer', 'upi', 'cheque', 'online')),
   reference TEXT,
   notes TEXT,
-  payment_date DATETIME NOT NULL,
+  payment_date TIMESTAMP NOT NULL,
   tenant_id TEXT NOT NULL,
   branch_id TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id)
 );
 
 CREATE TABLE IF NOT EXISTS tax_rates (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   rate REAL NOT NULL,
   description TEXT,
-  is_active INTEGER DEFAULT 1,
+  is_active BOOLEAN DEFAULT TRUE,
   tenant_id TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
 CREATE TABLE IF NOT EXISTS invoice_templates (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   description TEXT,
   template TEXT NOT NULL,
-  is_default INTEGER DEFAULT 0,
+  is_default BOOLEAN DEFAULT FALSE,
   tenant_id TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 
 CREATE TABLE IF NOT EXISTS company_settings (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   company_name TEXT NOT NULL,
   company_address TEXT,
   company_phone TEXT,
@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS company_settings (
   invoice_start_number INTEGER DEFAULT 1,
   communication_settings TEXT,
   tenant_id TEXT NOT NULL,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id)
 );
 

@@ -131,8 +131,27 @@ export class InvoiceRepository {
       `, [id]);
 
       if (invoice) {
-        invoice.items = invoice.items ? JSON.parse(invoice.items) : [];
-        invoice.tags = invoice.tags ? JSON.parse(invoice.tags) : [];
+        if (invoice.items) {
+          try {
+            invoice.items = typeof invoice.items === 'string' ? JSON.parse(invoice.items) : invoice.items;
+          } catch (e) {
+            console.error('Error parsing invoice items:', e);
+            invoice.items = [];
+          }
+        } else {
+          invoice.items = [];
+        }
+
+        if (invoice.tags) {
+          try {
+            invoice.tags = typeof invoice.tags === 'string' ? JSON.parse(invoice.tags) : invoice.tags;
+          } catch (e) {
+            invoice.tags = [];
+          }
+        } else {
+          invoice.tags = [];
+        }
+        
         invoice.isRecurring = Boolean(invoice.isRecurring);
       }
       return invoice;

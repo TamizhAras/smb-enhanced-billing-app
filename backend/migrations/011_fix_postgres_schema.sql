@@ -21,11 +21,15 @@ CREATE TABLE IF NOT EXISTS payments (
   FOREIGN KEY (branch_id) REFERENCES branches(id)
 );
 
--- 2. Add method column to payments if it doesn't exist
+-- 2. Add method and reference columns to payments if they don't exist
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'method') THEN
         ALTER TABLE payments ADD COLUMN method TEXT;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'reference') THEN
+        ALTER TABLE payments ADD COLUMN reference TEXT;
     END IF;
 END $$;
 

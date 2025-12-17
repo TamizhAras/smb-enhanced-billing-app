@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   po_number TEXT NOT NULL,
   status TEXT DEFAULT 'pending', -- pending, partial, received, cancelled
   total_amount REAL NOT NULL,
-  expected_date DATETIME,
+  expected_date TIMESTAMP,
   received_date DATETIME,
   notes TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

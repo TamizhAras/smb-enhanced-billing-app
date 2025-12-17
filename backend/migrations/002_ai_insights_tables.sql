@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS inventory (
   cost_price REAL DEFAULT 0,
   selling_price REAL DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants(id),
   FOREIGN KEY (branch_id) REFERENCES branches(id)
 );
