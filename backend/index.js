@@ -3,6 +3,7 @@ import express from 'express';
 import { json } from 'express';
 import cors from 'cors';
 import controllers from './controllers/index.js';
+import { runMigrations } from './migrations/runMigrations.js';
 
 const app = express();
 
@@ -58,6 +59,14 @@ app.get('/', (req, res) => {
 app.use('/api', controllers);
 
 const PORT = process.env.PORT || 4000;
+
+// Run migrations before starting server
+try {
+  await runMigrations(false);
+} catch (error) {
+  console.error('Migration failed:', error);
+}
+
 app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);

@@ -74,7 +74,13 @@ export class CustomerRepository {
       `, [id]);
 
       if (customer && customer.tags) {
-        customer.tags = JSON.parse(customer.tags);
+        try {
+          customer.tags = (typeof customer.tags === 'string' && customer.tags !== 'null' && customer.tags.trim() !== '') 
+            ? JSON.parse(customer.tags) 
+            : [];
+        } catch (e) {
+          customer.tags = [];
+        }
       }
       return customer;
   }
@@ -87,7 +93,13 @@ export class CustomerRepository {
       `, [email, tenantId]);
       
       if (customer && customer.tags) {
-        customer.tags = JSON.parse(customer.tags);
+        try {
+          customer.tags = (typeof customer.tags === 'string' && customer.tags !== 'null' && customer.tags.trim() !== '') 
+            ? JSON.parse(customer.tags) 
+            : [];
+        } catch (e) {
+          customer.tags = [];
+        }
       }
       return customer;
   }
@@ -100,7 +112,13 @@ export class CustomerRepository {
       `, [phone, tenantId]);
       
       if (customer && customer.tags) {
-        customer.tags = JSON.parse(customer.tags);
+        try {
+          customer.tags = (typeof customer.tags === 'string' && customer.tags !== 'null' && customer.tags.trim() !== '') 
+            ? JSON.parse(customer.tags) 
+            : [];
+        } catch (e) {
+          customer.tags = [];
+        }
       }
       return customer;
   }

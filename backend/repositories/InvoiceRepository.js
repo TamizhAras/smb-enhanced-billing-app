@@ -35,7 +35,7 @@ export class InvoiceRepository {
         discountType || null, discountValue || 0, discountAmount || 0,
         taxRate || 0, taxAmount || 0, totalAmount || 0, paidAmount || 0,
         outstandingAmount || totalAmount || 0, paymentTerms || null,
-        currency || 'INR', exchangeRate || 1, isRecurring ? 1 : 0,
+        currency || 'INR', exchangeRate || 1, isRecurring,
         recurringFrequency || null, recurringEndDate || null, parentInvoiceId || null,
         notes || null, terms || null, footerText || null, templateId || null,
         poNumber || null, projectId || null, tags ? JSON.stringify(tags) : null,
@@ -176,7 +176,7 @@ export class InvoiceRepository {
         const dbField = fieldMap[key] || key;
         fields.push(`${dbField} = ?`);
         values.push(key === 'tags' || key === 'items' ? JSON.stringify(value) : 
-                   key === 'isRecurring' ? (value ? 1 : 0) : value);
+                   key === 'isRecurring' ? Boolean(value) : value);
       }
 
       if (fields.length === 0) return;
@@ -233,7 +233,7 @@ export class InvoiceRepository {
     const db = await getDb();
     return await db.all(`
         SELECT * FROM invoices 
-        WHERE tenant_id = ? AND is_recurring = 1
+        WHERE tenant_id = ? AND is_recurring = true
         AND (recurring_end_date IS NULL OR recurring_end_date > ?)
         ORDER BY created_at DESC
       `, [tenantId, new Date().toISOString()]);
@@ -480,7 +480,7 @@ export class InvoiceRepository {
       const params = [tenantId];
 
       if (activeOnly) {
-        query += ' AND is_active = 1';
+        query += ' AND is_active = true';
       }
 
       if (branchId) {

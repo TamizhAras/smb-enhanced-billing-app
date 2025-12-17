@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function runMigrations() {
+export async function runMigrations(closeConn = false) {
   const db = await getDb();
   
   // Get all migration files in order
@@ -19,7 +19,8 @@ async function runMigrations() {
     '007_complete_customer_fields.sql',  // Complete customer table fields
     '008_final_alignment.sql',  // Final alignment of all tables
     '009_invoice_complete_fields.sql',  // Add ALL missing invoice columns
-    '010_branch_enhanced_fields.sql'  // Add enhanced branch fields for Phase 2
+    '010_branch_enhanced_fields.sql',  // Add enhanced branch fields for Phase 2
+    '011_fix_postgres_schema.sql'   // Fix missing columns and tables for Postgres
   ];
   
   console.log('Running migrations...');
@@ -43,7 +44,11 @@ async function runMigrations() {
   }
   
   console.log('\nAll migrations completed.');
-  await db.close();
+  if (closeConn) {
+    await db.close();
+  }
 }
 
-runMigrations();
+if (process.argv[1] === __filename) {
+  runMigrations(true);
+}
